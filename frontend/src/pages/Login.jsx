@@ -1,51 +1,66 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { apiRequest } from "../services/api";
 
+/**
+ * Página de Login.
+ *
+ * Responsabilidades:
+ * - Capturar email y contraseña
+ * - Llamar al backend (/login)
+ * - Guardar usuario en localStorage
+ * - Redirigir a /students si login es correcto
+ */
 export default function Login() {
   const navigate = useNavigate();
 
+  // Estado del formulario
   const [form, setForm] = useState({
     email: "admin@eintegracion.com",
     password: "Admin123!"
   });
+
+  // Estado de UI
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => {
+  /**
+   * Maneja cambios en inputs
+   */
+  function handleChange(e) {
     setForm({
       ...form,
       [e.target.name]: e.target.value
     });
-  };
+  }
 
-  const handleSubmit = async (e) => {
+  /**
+   * Envía datos al backend para autenticación
+   */
+  async function handleSubmit(e) {
     e.preventDefault();
+
     setError("");
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/login", {
+      const data = await apiRequest("/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
         body: JSON.stringify(form)
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Error de autenticación");
-      }
-
+      // Se guarda el usuario en localStorage
       localStorage.setItem("user", JSON.stringify(data.user));
+
+      // Redirección al listado de alumnos
       navigate("/students");
+
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="page center-page">
@@ -76,6 +91,10 @@ export default function Login() {
         </form>
 
         {error && <p className="error">{error}</p>}
+
+        <p className="helper-text">
+          ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
+        </p>
       </div>
     </div>
   );

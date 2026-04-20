@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiRequest } from "../services/api";
 
+/**
+ * Página de listado de alumnos.
+ *
+ * Responsabilidades:
+ * - Obtener alumnos desde el backend
+ * - Permitir búsqueda por texto
+ * - Mostrar listado en tabla
+ * - Navegar a crear alumno
+ * - Manejar logout
+ */
 export default function Students() {
   const navigate = useNavigate();
 
@@ -10,40 +21,44 @@ export default function Students() {
 
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
+  /**
+   * Carga inicial de alumnos
+   */
   useEffect(() => {
-    if (!user) {
-      navigate("/");
-      return;
-    }
-
     fetchStudents();
   }, []);
 
-  const fetchStudents = async (query = "") => {
+  /**
+   * Obtiene alumnos desde el backend
+   */
+  async function fetchStudents(query = "") {
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/students?q=${encodeURIComponent(query)}`
-      );
-      const data = await response.json();
+      const data = await apiRequest(`/students?q=${encodeURIComponent(query)}`);
       setStudents(data);
     } catch (error) {
       console.error("Error obteniendo alumnos:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleSearch = (e) => {
+  /**
+   * Maneja búsqueda
+   */
+  function handleSearch(e) {
     e.preventDefault();
     fetchStudents(search);
-  };
+  }
 
-  const handleLogout = () => {
+  /**
+   * Cierra sesión
+   */
+  function handleLogout() {
     localStorage.removeItem("user");
     navigate("/");
-  };
+  }
 
   return (
     <div className="page">
@@ -54,12 +69,21 @@ export default function Students() {
         </div>
 
         <div className="topbar-actions">
-          <span>{user?.name}</span>
+          <Link to="/dashboard" className="topbar-link">
+            Dashboard
+          </Link>
+          <span>{user?.full_name} ({user?.role})</span>
           <button onClick={handleLogout}>Salir</button>
         </div>
       </header>
 
       <section className="card">
+        <div className="section-actions">
+          <Link to="/students/new" className="primary-link-button">
+            Nuevo alumno
+          </Link>
+        </div>
+
         <form onSubmit={handleSearch} className="search-form">
           <input
             type="text"
@@ -91,7 +115,9 @@ export default function Students() {
                   <td>{student.escuela}</td>
                   <td>{student.maestro_grado}</td>
                   <td>
-                    <Link to={`/students/${student.id}`}>Ver legajo</Link>
+                    <Link to={`/students/${student.id}`}>
+                      Ver legajo
+                    </Link>
                   </td>
                 </tr>
               ))}

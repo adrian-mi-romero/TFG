@@ -8,6 +8,8 @@ import { apiRequest } from "../services/api";
  * Responsabilidades:
  * - Obtener datos del alumno
  * - Gestionar foto del alumno
+ * - Editar datos generales del alumno
+ * - Borrar alumno con confirmación
  * - Obtener contenidos, informes y visitas
  * - Mostrar información en pestañas
  * - Crear, editar y eliminar contenidos adaptados
@@ -25,6 +27,24 @@ export default function StudentDetail() {
   const [reports, setReports] = useState([]);
   const [visits, setVisits] = useState([]);
   const [activeTab, setActiveTab] = useState("datos");
+
+  // Estados para edición de datos del alumno
+  const [editingStudent, setEditingStudent] = useState(false);
+  const [studentForm, setStudentForm] = useState({
+    legajo: "",
+    nombre: "",
+    apellido: "",
+    escuela: "",
+    grado: "",
+    diagnostico: "",
+    maestro_integrador: "",
+    maestro_grado: "",
+    direccion: ""
+  });
+  const [studentError, setStudentError] = useState("");
+  const [studentSuccess, setStudentSuccess] = useState("");
+  const [studentLoading, setStudentLoading] = useState(false);
+  const [deletingStudent, setDeletingStudent] = useState(false);
 
   // Estados para foto del alumno
   const [studentPhotoFile, setStudentPhotoFile] = useState(null);
@@ -118,6 +138,27 @@ export default function StudentDetail() {
   }, [id]);
 
   /**
+   * Sincroniza formulario editable cuando cambian los datos del alumno
+   */
+  useEffect(() => {
+    if (!student) {
+      return;
+    }
+
+    setStudentForm({
+      legajo: student.legajo || "",
+      nombre: student.nombre || "",
+      apellido: student.apellido || "",
+      escuela: student.escuela || "",
+      grado: student.grado || "",
+      diagnostico: student.diagnostico || "",
+      maestro_integrador: student.maestro_integrador || "",
+      maestro_grado: student.maestro_grado || "",
+      direccion: student.direccion || ""
+    });
+  }, [student]);
+
+  /**
    * Obtiene toda la información del alumno en paralelo
    */
   async function fetchStudentData() {
@@ -180,6 +221,105 @@ export default function StudentDetail() {
    */
   function getStudentPhotoUrl() {
     return `http://localhost:5000/api/students/${id}/photo/view`;
+  }
+
+  /**
+   * Maneja cambios en el formulario de datos del alumno
+   */
+  function handleStudentFormChange(e) {
+    setStudentForm({
+      ...studentForm,
+      [e.target.name]: e.target.value
+    });
+  }
+
+  /**
+   * Activa edición de datos del alumno
+   */
+  function handleStartEditStudent() {
+    setStudentError("");
+    setStudentSuccess("");
+    setEditingStudent(true);
+  }
+
+  /**
+   * Cancela edición de datos del alumno
+   */
+  function handleCancelEditStudent() {
+    if (student) {
+      setStudentForm({
+        legajo: student.legajo || "",
+        nombre: student.nombre || "",
+        apellido: student.apellido || "",
+        escuela: student.escuela || "",
+        grado: student.grado || "",
+        diagnostico: student.diagnostico || "",
+        maestro_integrador: student.maestro_integrador || "",
+        maestro_grado: student.maestro_grado || "",
+        direccion: student.direccion || ""
+      });
+    }
+
+    setStudentError("");
+    setStudentSuccess("");
+    setEditingStudent(false);
+  }
+
+  /**
+   * Guarda cambios en los datos del alumno
+   */
+  async function handleSaveStudentData() {
+    setStudentError("");
+    setStudentSuccess("");
+    setStudentLoading(true);
+
+    try {
+      await apiRequest(`/students/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(studentForm)
+      });
+
+      await refreshStudent();
+      setStudentSuccess("Datos del alumno actualizados correctamente.");
+      setEditingStudent(false);
+    } catch (err) {
+      setStudentError(err.message);
+    } finally {
+      setStudentLoading(false);
+    }
+  }
+
+  /**
+   * Elimina el alumno completo con confirmación
+   */
+  async function handleDeleteStudent() {
+    if (!student) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Seguro que quieres eliminar a ${student.nombre} ${student.apellido}? Esta acción borrará también contenidos, informes, visitas, foto y archivos adjuntos.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setStudentError("");
+    setStudentSuccess("");
+    setDeletingStudent(true);
+
+    try {
+      await apiRequest(`/students/${id}`, {
+        method: "DELETE"
+      });
+
+      navigate("/students");
+    } catch (err) {
+      setStudentError(err.message);
+    } finally {
+      setDeletingStudent(false);
+    }
   }
 
   /**
@@ -804,6 +944,14 @@ export default function StudentDetail() {
             Dashboard
           </Link>
           <Link to="/students">Volver</Link>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={handleDeleteStudent}
+            disabled={deletingStudent}
+          >
+            {deletingStudent ? "Eliminando alumno..." : "Borrar alumno"}
+          </button>
         </div>
       </header>
 
@@ -885,18 +1033,143 @@ export default function StudentDetail() {
             </div>
 
             <div>
-              <h2>Datos generales</h2>
+              <div className="section-header">
+                <h2>Datos generales</h2>
 
-              <div className="student-data-grid">
-                <p><strong>Nombre:</strong> {student.nombre} {student.apellido}</p>
-                <p><strong>Legajo:</strong> {student.legajo}</p>
-                <p><strong>Escuela:</strong> {student.escuela}</p>
-                <p><strong>Grado:</strong> {student.grado}</p>
-                <p><strong>Diagnóstico:</strong> {student.diagnostico}</p>
-                <p><strong>Maestro integrador:</strong> {student.maestro_integrador}</p>
-                <p><strong>Maestro de grado:</strong> {student.maestro_grado}</p>
-                <p><strong>Dirección:</strong> {student.direccion}</p>
+                {!editingStudent ? (
+                  <button type="button" onClick={handleStartEditStudent}>
+                    Editar datos
+                  </button>
+                ) : (
+                  <div className="content-actions">
+                    <button
+                      type="button"
+                      onClick={handleSaveStudentData}
+                      disabled={studentLoading}
+                    >
+                      {studentLoading ? "Guardando..." : "Guardar cambios"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleCancelEditStudent}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {studentError && <p className="error">{studentError}</p>}
+              {studentSuccess && <p className="success">{studentSuccess}</p>}
+
+              {!editingStudent ? (
+                <div className="student-data-grid">
+                  <p><strong>Nombre:</strong> {student.nombre} {student.apellido}</p>
+                  <p><strong>Legajo:</strong> {student.legajo}</p>
+                  <p><strong>Escuela:</strong> {student.escuela}</p>
+                  <p><strong>Grado:</strong> {student.grado}</p>
+                  <p><strong>Diagnóstico:</strong> {student.diagnostico}</p>
+                  <p><strong>Maestro integrador:</strong> {student.maestro_integrador}</p>
+                  <p><strong>Maestro de grado:</strong> {student.maestro_grado}</p>
+                  <p><strong>Dirección:</strong> {student.direccion}</p>
+                </div>
+              ) : (
+                <div className="embedded-form">
+                  <div className="form-grid">
+                    <div>
+                      <label>Legajo</label>
+                      <input
+                        type="text"
+                        name="legajo"
+                        value={studentForm.legajo}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Nombre</label>
+                      <input
+                        type="text"
+                        name="nombre"
+                        value={studentForm.nombre}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Apellido</label>
+                      <input
+                        type="text"
+                        name="apellido"
+                        value={studentForm.apellido}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Escuela</label>
+                      <input
+                        type="text"
+                        name="escuela"
+                        value={studentForm.escuela}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Grado</label>
+                      <input
+                        type="text"
+                        name="grado"
+                        value={studentForm.grado}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Diagnóstico</label>
+                      <input
+                        type="text"
+                        name="diagnostico"
+                        value={studentForm.diagnostico}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Maestro integrador</label>
+                      <input
+                        type="text"
+                        name="maestro_integrador"
+                        value={studentForm.maestro_integrador}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div>
+                      <label>Maestro de grado</label>
+                      <input
+                        type="text"
+                        name="maestro_grado"
+                        value={studentForm.maestro_grado}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+
+                    <div className="full-width">
+                      <label>Dirección</label>
+                      <input
+                        type="text"
+                        name="direccion"
+                        value={studentForm.direccion}
+                        onChange={handleStudentFormChange}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </section>

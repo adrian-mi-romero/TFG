@@ -80,6 +80,17 @@ def delete_student_photo_if_exists(student):
         os.remove(student.photo_path)
 
 
+def delete_all_student_report_files(student):
+    """
+    Elimina todos los archivos adjuntos de informes asociados a un alumno.
+    """
+    if not student:
+        return
+
+    for report in student.reports:
+        delete_report_file_if_exists(report)
+
+
 @student_bp.route("/health", methods=["GET"])
 def health():
     """
@@ -185,6 +196,92 @@ def get_student(student_id):
         return jsonify({"error": "Alumno no encontrado"}), 404
 
     return jsonify(student.to_dict()), 200
+
+
+@student_bp.route("/students/<int:student_id>", methods=["PUT"])
+def update_student(student_id):
+    """
+    Actualiza los datos generales de un alumno.
+
+    Valida:
+    - que el alumno exista
+    - campos obligatorios: nombre, apellido, escuela
+    - legajo único si se modifica
+    """
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No se enviaron datos"}), 400
+
+    legajo = str(data.get("legajo", student.legajo)).strip()
+    nombre = str(data.get("nombre", "")).strip()
+    apellido = str(data.get("apellido", "")).strip()
+    escuela = str(data.get("escuela", "")).strip()
+    grado = str(data.get("grado", "")).strip()
+    diagnostico = str(data.get("diagnostico", "")).strip()
+    maestro_integrador = str(data.get("maestro_integrador", "")).strip()
+    maestro_grado = str(data.get("maestro_grado", "")).strip()
+    direccion = str(data.get("direccion", "")).strip()
+
+    if not nombre or not apellido or not escuela:
+        return jsonify({
+            "error": "Los campos nombre, apellido y escuela son obligatorios"
+        }), 400
+
+    existing_student = Student.query.filter(
+        Student.legajo == legajo,
+        Student.id != student.id
+    ).first()
+
+    if existing_student:
+        return jsonify({"error": "Ya existe otro alumno con ese legajo"}), 409
+
+    student.legajo = legajo
+    student.nombre = nombre
+    student.apellido = apellido
+    student.escuela = escuela
+    student.grado = grado
+    student.diagnostico = diagnostico
+    student.maestro_integrador = maestro_integrador
+    student.maestro_grado = maestro_grado
+    student.direccion = direccion
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Alumno actualizado correctamente",
+        "student": student.to_dict()
+    }), 200
+
+
+@student_bp.route("/students/<int:student_id>", methods=["DELETE"])
+def delete_student(student_id):
+    """
+    Elimina un alumno y todos sus datos relacionados.
+
+    También elimina archivos físicos asociados:
+    - foto del alumno
+    - adjuntos de informes
+    """
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    delete_student_photo_if_exists(student)
+    delete_all_student_report_files(student)
+
+    db.session.delete(student)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Alumno eliminado correctamente"
+    }), 200
 
 
 @student_bp.route("/students/<int:student_id>/photo", methods=["POST"])

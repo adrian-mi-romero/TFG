@@ -10,6 +10,7 @@ import { apiRequest } from "../services/api";
  * - Permitir búsqueda por texto
  * - Mostrar listado en tabla
  * - Navegar a crear alumno
+ * - Borrar alumno con confirmación
  * - Manejar logout
  */
 export default function Students() {
@@ -18,6 +19,9 @@ export default function Students() {
   const [students, setStudents] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteSuccess, setDeleteSuccess] = useState("");
+  const [deletingStudentId, setDeletingStudentId] = useState(null);
 
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
@@ -50,6 +54,36 @@ export default function Students() {
   function handleSearch(e) {
     e.preventDefault();
     fetchStudents(search);
+  }
+
+  /**
+   * Elimina un alumno previa confirmación
+   */
+  async function handleDeleteStudent(student) {
+    const confirmed = window.confirm(
+      `¿Seguro que quieres eliminar a ${student.nombre} ${student.apellido}? Esta acción borrará también contenidos, informes, visitas y archivos asociados.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteError("");
+    setDeleteSuccess("");
+    setDeletingStudentId(student.id);
+
+    try {
+      await apiRequest(`/students/${student.id}`, {
+        method: "DELETE"
+      });
+
+      setDeleteSuccess("Alumno eliminado correctamente.");
+      await fetchStudents(search);
+    } catch (err) {
+      setDeleteError(err.message);
+    } finally {
+      setDeletingStudentId(null);
+    }
   }
 
   /**
@@ -94,6 +128,9 @@ export default function Students() {
           <button type="submit">Buscar</button>
         </form>
 
+        {deleteError && <p className="error">{deleteError}</p>}
+        {deleteSuccess && <p className="success">{deleteSuccess}</p>}
+
         {loading ? (
           <p>Cargando alumnos...</p>
         ) : (
@@ -104,7 +141,7 @@ export default function Students() {
                 <th>Legajo</th>
                 <th>Colegio</th>
                 <th>Maestro de grado</th>
-                <th>Acción</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -115,9 +152,20 @@ export default function Students() {
                   <td>{student.escuela}</td>
                   <td>{student.maestro_grado}</td>
                   <td>
-                    <Link to={`/students/${student.id}`}>
-                      Ver legajo
-                    </Link>
+                    <div className="content-actions">
+                      <Link to={`/students/${student.id}`}>
+                        Ver legajo
+                      </Link>
+
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={() => handleDeleteStudent(student)}
+                        disabled={deletingStudentId === student.id}
+                      >
+                        {deletingStudentId === student.id ? "Eliminando..." : "Borrar"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

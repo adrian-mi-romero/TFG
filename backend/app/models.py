@@ -35,6 +35,13 @@ class Student(db.Model):
     maestro_integrador = db.Column(db.String(120), nullable=True)
     maestro_grado = db.Column(db.String(120), nullable=True)
     direccion = db.Column(db.String(200), nullable=True)
+
+    photo_original_name = db.Column(db.String(255), nullable=True)
+    photo_saved_name = db.Column(db.String(255), nullable=True)
+    photo_path = db.Column(db.String(500), nullable=True)
+    photo_mime_type = db.Column(db.String(150), nullable=True)
+    photo_size = db.Column(db.BigInteger, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     contents = db.relationship(
@@ -68,6 +75,12 @@ class Student(db.Model):
             "maestro_integrador": self.maestro_integrador,
             "maestro_grado": self.maestro_grado,
             "direccion": self.direccion,
+            "photo_original_name": self.photo_original_name,
+            "photo_saved_name": self.photo_saved_name,
+            "photo_path": self.photo_path,
+            "photo_mime_type": self.photo_mime_type,
+            "photo_size": self.photo_size,
+            "has_photo": bool(self.photo_saved_name),
             "created_at": self.created_at.isoformat()
         }
 
@@ -103,12 +116,11 @@ class Report(db.Model):
     fecha = db.Column(db.String(20), nullable=False)
     descripcion = db.Column(db.Text, nullable=True)
 
-    # Metadata del archivo adjunto
     attachment_original_name = db.Column(db.String(255), nullable=True)
     attachment_saved_name = db.Column(db.String(255), nullable=True)
     attachment_path = db.Column(db.String(500), nullable=True)
-    attachment_mime_type = db.Column(db.String(120), nullable=True)
-    attachment_size = db.Column(db.Integer, nullable=True)
+    attachment_mime_type = db.Column(db.String(150), nullable=True)
+    attachment_size = db.Column(db.BigInteger, nullable=True)
 
     def to_dict(self):
         return {

@@ -7,6 +7,7 @@ import { apiRequest } from "../services/api";
  *
  * Responsabilidades:
  * - Obtener datos del alumno
+ * - Gestionar foto del alumno
  * - Obtener contenidos, informes y visitas
  * - Mostrar información en pestañas
  * - Crear, editar y eliminar contenidos adaptados
@@ -24,6 +25,13 @@ export default function StudentDetail() {
   const [reports, setReports] = useState([]);
   const [visits, setVisits] = useState([]);
   const [activeTab, setActiveTab] = useState("datos");
+
+  // Estados para foto del alumno
+  const [studentPhotoFile, setStudentPhotoFile] = useState(null);
+  const [photoError, setPhotoError] = useState("");
+  const [photoSuccess, setPhotoSuccess] = useState("");
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [deletingPhoto, setDeletingPhoto] = useState(false);
 
   // Estados para crear contenido
   const [showContentForm, setShowContentForm] = useState(false);
@@ -136,6 +144,14 @@ export default function StudentDetail() {
   }
 
   /**
+   * Refresca solo los datos del alumno
+   */
+  async function refreshStudent() {
+    const refreshedStudent = await apiRequest(`/students/${id}`);
+    setStudent(refreshedStudent);
+  }
+
+  /**
    * Obtiene nuevamente los contenidos del alumno
    */
   async function refreshContents() {
@@ -157,6 +173,89 @@ export default function StudentDetail() {
   async function refreshVisits() {
     const refreshedVisits = await apiRequest(`/students/${id}/visits`);
     setVisits(refreshedVisits);
+  }
+
+  /**
+   * Devuelve la URL de visualización de la foto del alumno
+   */
+  function getStudentPhotoUrl() {
+    return `http://localhost:5000/api/students/${id}/photo/view`;
+  }
+
+  /**
+   * Maneja selección de archivo de foto
+   */
+  function handleStudentPhotoChange(e) {
+    const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    setStudentPhotoFile(file);
+  }
+
+  /**
+   * Sube o reemplaza la foto del alumno
+   */
+  async function handleUploadStudentPhoto() {
+    if (!studentPhotoFile) {
+      setPhotoError("Debes seleccionar una foto.");
+      setPhotoSuccess("");
+      return;
+    }
+
+    setPhotoError("");
+    setPhotoSuccess("");
+    setPhotoLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("photo", studentPhotoFile);
+
+      const response = await fetch(`http://localhost:5000/api/students/${id}/photo`, {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al subir foto");
+      }
+
+      setStudentPhotoFile(null);
+      setPhotoSuccess("Foto subida correctamente.");
+      await refreshStudent();
+    } catch (err) {
+      setPhotoError(err.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
+  /**
+   * Elimina la foto del alumno
+   */
+  async function handleDeleteStudentPhoto() {
+    const confirmed = window.confirm("¿Seguro que quieres eliminar la foto del alumno?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setPhotoError("");
+    setPhotoSuccess("");
+    setDeletingPhoto(true);
+
+    try {
+      await apiRequest(`/students/${id}/photo`, {
+        method: "DELETE"
+      });
+
+      setStudentPhotoFile(null);
+      setPhotoSuccess("Foto eliminada correctamente.");
+      await refreshStudent();
+    } catch (err) {
+      setPhotoError(err.message);
+    } finally {
+      setDeletingPhoto(false);
+    }
   }
 
   /**
@@ -740,16 +839,66 @@ export default function StudentDetail() {
 
       {activeTab === "datos" && (
         <section className="card">
-          <h2>Datos generales</h2>
+          <div className="student-photo-section">
+            <div className="student-photo-card">
+              {student.has_photo ? (
+                <img
+                  src={getStudentPhotoUrl()}
+                  alt={`Foto de ${student.nombre} ${student.apellido}`}
+                  className="student-photo-preview"
+                />
+              ) : (
+                <div className="student-photo-placeholder">
+                  <span>Sin foto cargada</span>
+                </div>
+              )}
 
-          <p><strong>Nombre:</strong> {student.nombre} {student.apellido}</p>
-          <p><strong>Legajo:</strong> {student.legajo}</p>
-          <p><strong>Escuela:</strong> {student.escuela}</p>
-          <p><strong>Grado:</strong> {student.grado}</p>
-          <p><strong>Diagnóstico:</strong> {student.diagnostico}</p>
-          <p><strong>Maestro integrador:</strong> {student.maestro_integrador}</p>
-          <p><strong>Maestro de grado:</strong> {student.maestro_grado}</p>
-          <p><strong>Dirección:</strong> {student.direccion}</p>
+              <div className="student-photo-actions">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleStudentPhotoChange}
+                />
+
+                <button
+                  type="button"
+                  onClick={handleUploadStudentPhoto}
+                  disabled={photoLoading}
+                >
+                  {photoLoading ? "Subiendo..." : student.has_photo ? "Reemplazar foto" : "Subir foto"}
+                </button>
+
+                {student.has_photo && (
+                  <button
+                    type="button"
+                    className="danger-button"
+                    onClick={handleDeleteStudentPhoto}
+                    disabled={deletingPhoto}
+                  >
+                    {deletingPhoto ? "Eliminando..." : "Eliminar foto"}
+                  </button>
+                )}
+              </div>
+
+              {photoError && <p className="error">{photoError}</p>}
+              {photoSuccess && <p className="success">{photoSuccess}</p>}
+            </div>
+
+            <div>
+              <h2>Datos generales</h2>
+
+              <div className="student-data-grid">
+                <p><strong>Nombre:</strong> {student.nombre} {student.apellido}</p>
+                <p><strong>Legajo:</strong> {student.legajo}</p>
+                <p><strong>Escuela:</strong> {student.escuela}</p>
+                <p><strong>Grado:</strong> {student.grado}</p>
+                <p><strong>Diagnóstico:</strong> {student.diagnostico}</p>
+                <p><strong>Maestro integrador:</strong> {student.maestro_integrador}</p>
+                <p><strong>Maestro de grado:</strong> {student.maestro_grado}</p>
+                <p><strong>Dirección:</strong> {student.direccion}</p>
+              </div>
+            </div>
+          </div>
         </section>
       )}
 

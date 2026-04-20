@@ -13,13 +13,6 @@ student_bp = Blueprint("student_bp", __name__, url_prefix="/api")
 def save_uploaded_report_file(file_storage):
     """
     Guarda un archivo adjunto de informe en disco y retorna su metadata.
-
-    Retorna:
-    - original_name
-    - saved_name
-    - full_path
-    - mime_type
-    - size
     """
     original_name = secure_filename(file_storage.filename)
 
@@ -50,6 +43,41 @@ def delete_report_file_if_exists(report):
     """
     if report and report.attachment_path and os.path.exists(report.attachment_path):
         os.remove(report.attachment_path)
+
+
+def save_uploaded_student_photo(file_storage):
+    """
+    Guarda la foto de un alumno en disco y retorna su metadata.
+    """
+    original_name = secure_filename(file_storage.filename)
+
+    if not original_name:
+        return None
+
+    unique_name = f"{uuid.uuid4().hex}_{original_name}"
+    students_folder = current_app.config["STUDENTS_UPLOAD_FOLDER"]
+    full_path = os.path.join(students_folder, unique_name)
+
+    file_storage.save(full_path)
+
+    size = os.path.getsize(full_path)
+    mime_type = file_storage.mimetype
+
+    return {
+        "original_name": original_name,
+        "saved_name": unique_name,
+        "full_path": full_path,
+        "mime_type": mime_type,
+        "size": size
+    }
+
+
+def delete_student_photo_if_exists(student):
+    """
+    Elimina del filesystem la foto asociada a un alumno si existe.
+    """
+    if student and student.photo_path and os.path.exists(student.photo_path):
+        os.remove(student.photo_path)
 
 
 @student_bp.route("/health", methods=["GET"])
@@ -157,6 +185,90 @@ def get_student(student_id):
         return jsonify({"error": "Alumno no encontrado"}), 404
 
     return jsonify(student.to_dict()), 200
+
+
+@student_bp.route("/students/<int:student_id>/photo", methods=["POST"])
+def upload_student_photo(student_id):
+    """
+    Sube o reemplaza la foto de un alumno.
+    """
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    photo = request.files.get("photo")
+
+    if not photo or not photo.filename:
+        return jsonify({"error": "Debe adjuntar una foto"}), 400
+
+    delete_student_photo_if_exists(student)
+
+    saved_file = save_uploaded_student_photo(photo)
+
+    if not saved_file:
+        return jsonify({"error": "Nombre de archivo inválido"}), 400
+
+    student.photo_original_name = saved_file["original_name"]
+    student.photo_saved_name = saved_file["saved_name"]
+    student.photo_path = saved_file["full_path"]
+    student.photo_mime_type = saved_file["mime_type"]
+    student.photo_size = saved_file["size"]
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Foto subida correctamente",
+        "student": student.to_dict()
+    }), 200
+
+
+@student_bp.route("/students/<int:student_id>/photo", methods=["DELETE"])
+def delete_student_photo(student_id):
+    """
+    Elimina la foto de un alumno.
+    """
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    delete_student_photo_if_exists(student)
+
+    student.photo_original_name = None
+    student.photo_saved_name = None
+    student.photo_path = None
+    student.photo_mime_type = None
+    student.photo_size = None
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Foto eliminada correctamente",
+        "student": student.to_dict()
+    }), 200
+
+
+@student_bp.route("/students/<int:student_id>/photo/view", methods=["GET"])
+def view_student_photo(student_id):
+    """
+    Devuelve la foto del alumno para visualizarla en frontend.
+    """
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not student.photo_saved_name:
+        return jsonify({"error": "El alumno no tiene foto"}), 404
+
+    students_folder = current_app.config["STUDENTS_UPLOAD_FOLDER"]
+
+    return send_from_directory(
+        students_folder,
+        student.photo_saved_name,
+        as_attachment=False
+    )
 
 
 @student_bp.route("/students/<int:student_id>/contents", methods=["GET"])
@@ -506,10 +618,6 @@ def get_student_visits(student_id):
 def create_student_visit(student_id):
     """
     Crea una nueva visita para un alumno.
-
-    Campos obligatorios:
-    - fecha
-    - profesional
     """
     student = db.session.get(Student, student_id)
 

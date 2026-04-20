@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS students (
     maestro_integrador VARCHAR(120) DEFAULT NULL,
     maestro_grado VARCHAR(120) DEFAULT NULL,
     direccion VARCHAR(200) DEFAULT NULL,
+    photo_original_name VARCHAR(255) DEFAULT NULL,
+    photo_saved_name VARCHAR(255) DEFAULT NULL,
+    photo_path VARCHAR(500) DEFAULT NULL,
+    photo_mime_type VARCHAR(150) DEFAULT NULL,
+    photo_size BIGINT DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_students_legajo (legajo),
     INDEX idx_students_apellido_nombre (apellido, nombre)

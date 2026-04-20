@@ -2,18 +2,6 @@ import os
 
 
 class Config:
-    """
-    Configuración principal de la aplicación.
-
-    Incluye:
-    - conexión a MariaDB
-    - clave secreta
-    - carpeta de uploads
-    - límite máximo de tamaño para archivos adjuntos
-    """
-
-    BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-
     SECRET_KEY = "dev-secret-key-change-later"
 
     DB_USER = "school_user"
@@ -29,8 +17,10 @@ class Config:
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Carpeta local donde se guardarán los archivos adjuntos de informes
-    UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads", "reports")
+    BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+    REPORTS_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, "reports")
+    STUDENTS_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, "students")
 
-    # Límite máximo de archivo: 10 MB
-    MAX_CONTENT_LENGTH = 10 * 1024 * 1024
+    # 16 MB máximo por request
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024

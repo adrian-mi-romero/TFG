@@ -392,6 +392,66 @@ button:hover {
   color: #6b7280;
 }
 
+/* Foto del alumno */
+.student-photo-section {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.student-photo-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.student-photo-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #d0d7de;
+  background: white;
+}
+
+.student-photo-placeholder {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  color: #6b7280;
+}
+
+.student-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.student-photo-actions button {
+  margin-top: 0;
+}
+
+.student-data-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+
+.student-data-grid p {
+  margin: 0;
+}
+
 /* Mejor comportamiento en pantallas medianas o pequeñas */
 @media (max-width: 768px) {
   .form-grid {
@@ -428,5 +488,13 @@ button:hover {
   .dashboard-list-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .student-photo-section {
+    grid-template-columns: 1fr;
+  }
+
+  .student-data-grid {
+    grid-template-columns: 1fr;
   }
 }

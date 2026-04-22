@@ -48,6 +48,7 @@ export default function StudentDetail() {
 
   // Estados para foto del alumno
   const [studentPhotoFile, setStudentPhotoFile] = useState(null);
+  const [studentPhotoUrl, setStudentPhotoUrl] = useState("");
   const [photoError, setPhotoError] = useState("");
   const [photoSuccess, setPhotoSuccess] = useState("");
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -159,6 +160,57 @@ export default function StudentDetail() {
   }, [student]);
 
   /**
+   * Carga la foto del alumno usando fetch autenticado y genera una URL temporal.
+   */
+  useEffect(() => {
+    let objectUrl = null;
+    let canceled = false;
+
+    async function loadStudentPhoto() {
+      if (!student?.has_photo) {
+        setStudentPhotoUrl("");
+        return;
+      }
+
+      const user = JSON.parse(localStorage.getItem("user") || "null");
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/students/${id}/photo/view`, {
+          headers: {
+            ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+          }
+        });
+
+        if (!response.ok) {
+          setStudentPhotoUrl("");
+          return;
+        }
+
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+
+        if (!canceled) {
+          setStudentPhotoUrl(objectUrl);
+        }
+      } catch (error) {
+        if (!canceled) {
+          setStudentPhotoUrl("");
+        }
+      }
+    }
+
+    loadStudentPhoto();
+
+    return () => {
+      canceled = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [id, student]);
+
+  /**
    * Obtiene toda la información del alumno en paralelo
    */
   async function fetchStudentData() {
@@ -214,13 +266,6 @@ export default function StudentDetail() {
   async function refreshVisits() {
     const refreshedVisits = await apiRequest(`/students/${id}/visits`);
     setVisits(refreshedVisits);
-  }
-
-  /**
-   * Devuelve la URL de visualización de la foto del alumno
-   */
-  function getStudentPhotoUrl() {
-    return `http://localhost:5000/api/students/${id}/photo/view`;
   }
 
   /**
@@ -340,6 +385,8 @@ export default function StudentDetail() {
       return;
     }
 
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
     setPhotoError("");
     setPhotoSuccess("");
     setPhotoLoading(true);
@@ -350,6 +397,9 @@ export default function StudentDetail() {
 
       const response = await fetch(`http://localhost:5000/api/students/${id}/photo`, {
         method: "POST",
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        },
         body: formData
       });
 
@@ -590,6 +640,7 @@ export default function StudentDetail() {
    */
   async function handleCreateReport(e) {
     e.preventDefault();
+    const user = JSON.parse(localStorage.getItem("user") || "null");
 
     setReportError("");
     setReportSuccess("");
@@ -608,6 +659,9 @@ export default function StudentDetail() {
 
       const response = await fetch(`http://localhost:5000/api/students/${id}/reports`, {
         method: "POST",
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        },
         body: formData
       });
 
@@ -693,6 +747,8 @@ export default function StudentDetail() {
    * Guarda edición de informe
    */
   async function handleSaveEditedReport(reportId) {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
     setReportError("");
     setReportSuccess("");
     setEditingReportLoading(true);
@@ -711,6 +767,9 @@ export default function StudentDetail() {
 
       const response = await fetch(`http://localhost:5000/api/students/${id}/reports/${reportId}`, {
         method: "PUT",
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        },
         body: formData
       });
 
@@ -763,10 +822,45 @@ export default function StudentDetail() {
   }
 
   /**
-   * Construye la URL de descarga del adjunto de un informe
+   * Descarga el archivo adjunto de un informe con autenticación.
    */
-  function getReportDownloadUrl(reportId) {
-    return `http://localhost:5000/api/students/${id}/reports/${reportId}/download`;
+  async function handleDownloadReportAttachment(report) {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
+    setReportError("");
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/students/${id}/reports/${report.id}/download`, {
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        }
+      });
+
+      let data = null;
+
+      if (!response.ok) {
+        try {
+          data = await response.json();
+        } catch (error) {
+          data = null;
+        }
+
+        throw new Error(data?.error || "Error al descargar el adjunto");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = report.attachment_original_name || `informe_${report.id}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setReportError(err.message);
+    }
   }
 
   /**
@@ -989,9 +1083,9 @@ export default function StudentDetail() {
         <section className="card">
           <div className="student-photo-section">
             <div className="student-photo-card">
-              {student.has_photo ? (
+              {student.has_photo && studentPhotoUrl ? (
                 <img
-                  src={getStudentPhotoUrl()}
+                  src={studentPhotoUrl}
                   alt={`Foto de ${student.nombre} ${student.apellido}`}
                   className="student-photo-preview"
                 />
@@ -1575,13 +1669,12 @@ export default function StudentDetail() {
                     {item.has_attachment && (
                       <p>
                         <strong>Adjunto:</strong>{" "}
-                        <a
-                          href={getReportDownloadUrl(item.id)}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadReportAttachment(item)}
                         >
                           {item.attachment_original_name}
-                        </a>
+                        </button>
                       </p>
                     )}
                   </div>

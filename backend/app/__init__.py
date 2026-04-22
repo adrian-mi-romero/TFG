@@ -43,6 +43,6 @@ def create_app():
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
         # Inserta datos iniciales si la DB está vacía
-        seed_database()
+        # seed_database()
 
     return app

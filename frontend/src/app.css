@@ -352,6 +352,12 @@ button:hover {
   color: #1976d2;
 }
 
+.dashboard-stat-help {
+  margin: 8px 0 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
 .dashboard-actions-grid {
   max-width: 1100px;
   margin: 0 auto;
@@ -360,8 +366,36 @@ button:hover {
   gap: 20px;
 }
 
+.dashboard-layout {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.dashboard-main-column,
+.dashboard-side-column {
+  min-width: 0;
+}
+
+.dashboard-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
 .dashboard-card {
   max-width: none;
+}
+
+.dashboard-card-alert {
+  margin-bottom: 20px;
+}
+
+.dashboard-section-spacing {
+  margin-top: 20px;
 }
 
 .dashboard-actions {
@@ -374,6 +408,10 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.dashboard-list-compact {
+  gap: 8px;
 }
 
 .dashboard-list-item {
@@ -390,6 +428,28 @@ button:hover {
 .dashboard-list-item p {
   margin: 4px 0 0 0;
   color: #6b7280;
+}
+
+.dashboard-alert-block + .dashboard-alert-block {
+  margin-top: 20px;
+}
+
+.dashboard-alert-block h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #374151;
+}
+
+.dashboard-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: bold;
 }
 
 /* Foto del alumno */
@@ -482,6 +542,14 @@ button:hover {
   }
 
   .dashboard-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-compact-grid {
     grid-template-columns: 1fr;
   }
 

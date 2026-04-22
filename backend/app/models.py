@@ -12,6 +12,13 @@ class User(db.Model):
     role = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
+    assignments = db.relationship(
+        "StudentAssignment",
+        backref="user",
+        cascade="all, delete-orphan",
+        lazy=True
+    )
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -62,6 +69,12 @@ class Student(db.Model):
         cascade="all, delete-orphan",
         lazy=True
     )
+    assignments = db.relationship(
+        "StudentAssignment",
+        backref="student",
+        cascade="all, delete-orphan",
+        lazy=True
+    )
 
     def to_dict(self):
         return {
@@ -81,6 +94,25 @@ class Student(db.Model):
             "photo_mime_type": self.photo_mime_type,
             "photo_size": self.photo_size,
             "has_photo": bool(self.photo_saved_name),
+            "created_at": self.created_at.isoformat()
+        }
+
+
+class StudentAssignment(db.Model):
+    __tablename__ = "student_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    assignment_type = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "student_id": self.student_id,
+            "user_id": self.user_id,
+            "assignment_type": self.assignment_type,
             "created_at": self.created_at.isoformat()
         }
 

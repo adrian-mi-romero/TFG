@@ -32,12 +32,19 @@ def seed_database():
 
     integrador = User(
         full_name="Lucia Perez",
-        email="maestra@eintegracion.com",
-        password_hash=hash_password("Maestra123!"),
-        role="maestro_integrador"
+        email="integrador@eintegracion.com",
+        password_hash=hash_password("Admin123!"),
+        role="integrador"
     )
 
-    db.session.add_all([admin, integrador])
+    docente = User(
+        full_name="Carlos Diaz",
+        email="docente@eintegracion.com",
+        password_hash=hash_password("Admin123!"),
+        role="docente"
+    )
+
+    db.session.add_all([admin, integrador, docente])
     db.session.commit()
 
     # -----------------------------

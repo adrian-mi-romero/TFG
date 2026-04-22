@@ -4,10 +4,97 @@ from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Student, AdaptedContent, Report, Visit
+from app.models import Student, StudentAssignment, AdaptedContent, Report, Visit, User
 
 # Blueprint para agrupar todas las rutas relacionadas a alumnos
 student_bp = Blueprint("student_bp", __name__, url_prefix="/api")
+
+
+def get_current_user():
+    """
+    Obtiene el usuario actual desde el header X-USER-ID.
+    """
+    user_id = request.headers.get("X-USER-ID")
+
+    if not user_id:
+        return None
+
+    try:
+        return db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_admin(user):
+    """
+    Indica si el usuario es administrador.
+    """
+    return user is not None and user.role == "admin"
+
+
+def get_visible_student_ids(user):
+    """
+    Devuelve los ids de alumnos visibles para el usuario.
+    """
+    if not user:
+        return []
+
+    if is_admin(user):
+        return [student.id for student in Student.query.all()]
+
+    assignments = StudentAssignment.query.filter_by(user_id=user.id).all()
+    return [assignment.student_id for assignment in assignments]
+
+
+def can_access_student(user, student_id):
+    """
+    Verifica si el usuario puede acceder al alumno indicado.
+    """
+    if not user:
+        return False
+
+    if is_admin(user):
+        return True
+
+    assignment = StudentAssignment.query.filter_by(
+        user_id=user.id,
+        student_id=student_id
+    ).first()
+
+    return assignment is not None
+
+
+def can_create_student(user):
+    """
+    Define quién puede crear alumnos.
+    """
+    if not user:
+        return False
+
+    return user.role in ["admin", "maestro_integrador"]
+
+
+def can_edit_student(user, student_id):
+    """
+    Define quién puede editar datos generales del alumno.
+    """
+    if not user:
+        return False
+
+    if is_admin(user):
+        return True
+
+    if user.role == "maestro_integrador" and can_access_student(user, student_id):
+        return True
+
+    return False
+
+
+def can_delete_student(user):
+    """
+    Define quién puede borrar alumnos.
+    """
+    return is_admin(user)
 
 
 def save_uploaded_report_file(file_storage):
@@ -102,16 +189,31 @@ def health():
 @student_bp.route("/students", methods=["GET"])
 def get_students():
     """
-    Obtiene la lista de alumnos.
+    Obtiene la lista de alumnos visibles para el usuario actual.
 
     Permite filtro opcional mediante query param 'q', buscando por:
     - Nombre completo
     - Legajo
     - Escuela
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     query = request.args.get("q", "").strip().lower()
 
-    students = Student.query.order_by(Student.apellido.asc(), Student.nombre.asc()).all()
+    if is_admin(user):
+        students = Student.query.order_by(Student.apellido.asc(), Student.nombre.asc()).all()
+    else:
+        visible_ids = get_visible_student_ids(user)
+
+        if not visible_ids:
+            return jsonify([]), 200
+
+        students = Student.query.filter(
+            Student.id.in_(visible_ids)
+        ).order_by(Student.apellido.asc(), Student.nombre.asc()).all()
 
     if query:
         filtered = []
@@ -136,9 +238,22 @@ def create_student():
     Crea un nuevo alumno.
 
     Valida:
-    - Campos obligatorios: legajo, nombre, apellido, escuela
+    - usuario autenticado
+    - permiso de creación
+    - campos obligatorios: legajo, nombre, apellido, escuela
     - Legajo único
+
+    Regla especial:
+    - si el creador es maestro_integrador, se autoasigna al alumno creado
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    if not can_create_student(user):
+        return jsonify({"error": "No tienes permisos para crear alumnos"}), 403
+
     data = request.get_json()
 
     if not data:
@@ -179,6 +294,16 @@ def create_student():
     db.session.add(student)
     db.session.commit()
 
+    # Autoasignación del maestro integrador al alumno recién creado
+    if user.role == "maestro_integrador":
+        assignment = StudentAssignment(
+            student_id=student.id,
+            user_id=user.id,
+            assignment_type="maestro_integrador"
+        )
+        db.session.add(assignment)
+        db.session.commit()
+
     return jsonify({
         "message": "Alumno creado correctamente",
         "student": student.to_dict()
@@ -188,12 +313,20 @@ def create_student():
 @student_bp.route("/students/<int:student_id>", methods=["GET"])
 def get_student(student_id):
     """
-    Obtiene el detalle de un alumno por ID.
+    Obtiene el detalle de un alumno por ID si el usuario tiene acceso.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     return jsonify(student.to_dict()), 200
 
@@ -204,14 +337,24 @@ def update_student(student_id):
     Actualiza los datos generales de un alumno.
 
     Valida:
+    - que el usuario esté autenticado
     - que el alumno exista
+    - que el usuario tenga permiso
     - campos obligatorios: nombre, apellido, escuela
     - legajo único si se modifica
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     data = request.get_json()
 
@@ -267,7 +410,17 @@ def delete_student(student_id):
     También elimina archivos físicos asociados:
     - foto del alumno
     - adjuntos de informes
+
+    Solo admin puede borrar alumnos.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    if not can_delete_student(user):
+        return jsonify({"error": "No tienes permisos para borrar alumnos"}), 403
+
     student = db.session.get(Student, student_id)
 
     if not student:
@@ -289,10 +442,18 @@ def upload_student_photo(student_id):
     """
     Sube o reemplaza la foto de un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para modificar la foto de este alumno"}), 403
 
     photo = request.files.get("photo")
 
@@ -325,10 +486,18 @@ def delete_student_photo(student_id):
     """
     Elimina la foto de un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para eliminar la foto de este alumno"}), 403
 
     delete_student_photo_if_exists(student)
 
@@ -351,10 +520,18 @@ def view_student_photo(student_id):
     """
     Devuelve la foto del alumno para visualizarla en frontend.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     if not student.photo_saved_name:
         return jsonify({"error": "El alumno no tiene foto"}), 404
@@ -373,10 +550,18 @@ def get_student_contents(student_id):
     """
     Obtiene los contenidos adaptados de un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     return jsonify([item.to_dict() for item in student.contents]), 200
 
@@ -386,10 +571,18 @@ def create_student_content(student_id):
     """
     Crea un nuevo contenido adaptado para un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     data = request.get_json()
 
@@ -437,10 +630,18 @@ def update_student_content(student_id, content_id):
     """
     Actualiza un contenido adaptado existente.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     content = db.session.get(AdaptedContent, content_id)
 
@@ -490,10 +691,18 @@ def delete_student_content(student_id, content_id):
     """
     Elimina un contenido adaptado.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     content = db.session.get(AdaptedContent, content_id)
 
@@ -516,10 +725,18 @@ def get_student_reports(student_id):
     """
     Obtiene los informes pedagógicos o terapéuticos de un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     return jsonify([item.to_dict() for item in student.reports]), 200
 
@@ -530,10 +747,18 @@ def create_student_report(student_id):
     Crea un nuevo informe para un alumno.
     Admite archivo adjunto opcional vía multipart/form-data.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     autor = str(request.form.get("autor", "")).strip()
     tipo = str(request.form.get("tipo", "")).strip()
@@ -580,10 +805,18 @@ def update_student_report(student_id, report_id):
     Actualiza un informe existente.
     Admite reemplazo opcional del archivo adjunto.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     report = db.session.get(Report, report_id)
 
@@ -644,10 +877,18 @@ def delete_student_report(student_id, report_id):
     """
     Elimina un informe y su archivo adjunto si existe.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     report = db.session.get(Report, report_id)
 
@@ -672,10 +913,18 @@ def download_student_report_attachment(student_id, report_id):
     """
     Descarga el archivo adjunto de un informe.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     report = db.session.get(Report, report_id)
 
@@ -703,10 +952,18 @@ def get_student_visits(student_id):
     """
     Obtiene el calendario de visitas asociadas a un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     return jsonify([item.to_dict() for item in student.visits]), 200
 
@@ -716,10 +973,18 @@ def create_student_visit(student_id):
     """
     Crea una nueva visita para un alumno.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     data = request.get_json()
 
@@ -756,10 +1021,18 @@ def update_student_visit(student_id, visit_id):
     """
     Actualiza una visita existente.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     visit = db.session.get(Visit, visit_id)
 
@@ -800,10 +1073,18 @@ def delete_student_visit(student_id, visit_id):
     """
     Elimina una visita.
     """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
     student = db.session.get(Student, student_id)
 
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     visit = db.session.get(Visit, visit_id)
 

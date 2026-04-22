@@ -43,6 +43,7 @@ sleep 15
 
 echo "Creating database structure..."
 docker exec -i $CONTAINER_NAME mariadb -u root -p$DB_ROOT_PASSWORD $DB_NAME <<EOF
+DROP TABLE IF EXISTS student_assignments;
 DROP TABLE IF EXISTS visits;
 DROP TABLE IF EXISTS reports;
 DROP TABLE IF EXISTS adapted_contents;
@@ -78,6 +79,24 @@ CREATE TABLE IF NOT EXISTS students (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_students_legajo (legajo),
     INDEX idx_students_apellido_nombre (apellido, nombre)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS student_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    user_id INT NOT NULL,
+    assignment_type VARCHAR(50) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_student_assignments_student_id (student_id),
+    INDEX idx_student_assignments_user_id (user_id),
+    INDEX idx_student_assignments_type (assignment_type),
+    UNIQUE KEY uq_student_user_type (student_id, user_id, assignment_type),
+    CONSTRAINT fk_student_assignments_student
+        FOREIGN KEY (student_id) REFERENCES students(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_student_assignments_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS adapted_contents (

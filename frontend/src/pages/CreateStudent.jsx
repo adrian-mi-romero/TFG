@@ -79,7 +79,7 @@ export default function CreateStudent() {
 
         <div className="topbar-actions">
           <Link to="/dashboard" className="topbar-link">
-            Dashboard
+            Panel principal
           </Link>
           <Link to="/students">Volver</Link>
         </div>

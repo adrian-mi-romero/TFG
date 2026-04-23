@@ -15,16 +15,18 @@ export default function Dashboard() {
 
   const [stats, setStats] = useState({
     students: 0,
-    contents: 0,
-    reports: 0,
-    visits: 0,
+    studentsWithContents: 0,
+    studentsWithReports: 0,
+    visitsCurrentMonth: 0,
+    currentMonthLabel: "",
     withPhoto: 0,
     avgProgress: 0
   });
 
   const [recentStudents, setRecentStudents] = useState([]);
   const [recentReports, setRecentReports] = useState([]);
-  const [recentVisits, setRecentVisits] = useState([]);
+  const [recentCompletedVisits, setRecentCompletedVisits] = useState([]);
+  const [recentScheduledVisits, setRecentScheduledVisits] = useState([]);
   const [studentsWithoutReports, setStudentsWithoutReports] = useState([]);
   const [studentsWithoutVisits, setStudentsWithoutVisits] = useState([]);
   const [studentsByIntegrator, setStudentsByIntegrator] = useState([]);
@@ -77,10 +79,20 @@ export default function Dashboard() {
 
       const details = await Promise.all(detailPromises);
 
-      const totalContents = details.reduce((total, item) => total + item.contents.length, 0);
-      const totalReports = details.reduce((total, item) => total + item.reports.length, 0);
-      const totalVisits = details.reduce((total, item) => total + item.visits.length, 0);
       const studentsWithPhoto = students.filter((student) => student.has_photo).length;
+      const studentsWithContents = details.filter((item) => item.contents.length > 0).length;
+      const studentsWithReports = details.filter((item) => item.reports.length > 0).length;
+
+      const now = new Date();
+      const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const currentMonthLabel = now.toLocaleDateString("es-AR", {
+        month: "long",
+        year: "numeric"
+      });
+
+      const visitsCurrentMonth = details
+        .flatMap((item) => item.visits)
+        .filter((visit) => String(visit.fecha || "").startsWith(currentYearMonth)).length;
 
       const allContents = details.flatMap((item) => item.contents);
       const averageProgress = allContents.length === 0
@@ -105,7 +117,7 @@ export default function Dashboard() {
         .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
         .slice(0, 5);
 
-      const sortedRecentVisits = details
+      const allVisits = details
         .flatMap((item) =>
           item.visits.map((visit) => ({
             ...visit,
@@ -113,7 +125,15 @@ export default function Dashboard() {
             studentName: `${item.student.nombre} ${item.student.apellido}`,
             studentLegajo: item.student.legajo
           }))
-        )
+        );
+
+      const sortedRecentCompletedVisits = allVisits
+        .filter((visit) => visit.estado_calendario === "efectuada")
+        .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
+        .slice(0, 5);
+
+      const sortedRecentScheduledVisits = allVisits
+        .filter((visit) => visit.estado_calendario === "programada" || visit.estado_calendario === "hoy")
         .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
         .slice(0, 5);
 
@@ -139,15 +159,17 @@ export default function Dashboard() {
 
       setStats({
         students: students.length,
-        contents: totalContents,
-        reports: totalReports,
-        visits: totalVisits,
+        studentsWithContents,
+        studentsWithReports,
+        visitsCurrentMonth,
+        currentMonthLabel,
         withPhoto: studentsWithPhoto,
         avgProgress: averageProgress
       });
       setRecentStudents(sortedRecentStudents);
       setRecentReports(sortedRecentReports);
-      setRecentVisits(sortedRecentVisits);
+      setRecentCompletedVisits(sortedRecentCompletedVisits);
+      setRecentScheduledVisits(sortedRecentScheduledVisits);
       setStudentsWithoutReports(missingReports);
       setStudentsWithoutVisits(missingVisits);
       setStudentsByIntegrator(integratorDistribution);
@@ -177,6 +199,7 @@ export default function Dashboard() {
 
         <div className="topbar-actions">
           <span>{user?.full_name} ({user?.role})</span>
+          <Link to="/profile">Mi perfil</Link>
           <button onClick={handleLogout}>Salir</button>
         </div>
       </header>
@@ -201,17 +224,28 @@ export default function Dashboard() {
 
             <div className="dashboard-stat-card">
               <h3>Contenidos</h3>
-              <p className="dashboard-stat-value">{stats.contents}</p>
+              <p className="dashboard-stat-value">{stats.studentsWithContents}</p>
+              <p className="dashboard-stat-help">
+                {stats.students - stats.studentsWithContents === 0
+                  ? "Todos los alumnos tienen contenidos"
+                  : `${stats.students - stats.studentsWithContents} pendientes`}
+              </p>
             </div>
 
             <div className="dashboard-stat-card">
-              <h3>Informes</h3>
-              <p className="dashboard-stat-value">{stats.reports}</p>
+              <h3>Informes terapéuticos</h3>
+              <p className="dashboard-stat-value">{stats.studentsWithReports}</p>
+              <p className="dashboard-stat-help">
+                {stats.students - stats.studentsWithReports === 0
+                  ? "Todos los alumnos tienen informes"
+                  : `${stats.students - stats.studentsWithReports} pendientes`}
+              </p>
             </div>
 
             <div className="dashboard-stat-card">
-              <h3>Visitas</h3>
-              <p className="dashboard-stat-value">{stats.visits}</p>
+              <h3>Visitas: {stats.currentMonthLabel}</h3>
+              <p className="dashboard-stat-value">{stats.visitsCurrentMonth}</p>
+              <p className="dashboard-stat-help">del mes corriente</p>
             </div>
 
             <div className="dashboard-stat-card">
@@ -294,15 +328,39 @@ export default function Dashboard() {
                 </div>
 
                 <div className="card dashboard-card">
-                  <h2>Últimas visitas</h2>
+                  <h2>Últimas visitas efectuadas</h2>
 
-                  {recentVisits.length === 0 ? (
-                    <p>No hay visitas registradas.</p>
+                  {recentCompletedVisits.length === 0 ? (
+                    <p>No hay visitas efectuadas.</p>
                   ) : (
                     <div className="dashboard-list dashboard-list-compact">
-                      {recentVisits.slice(0, 4).map((visit) => (
+                      {recentCompletedVisits.slice(0, 4).map((visit) => (
                         <Link
-                          key={`visit-${visit.id}`}
+                          key={`visit-completed-${visit.id}`}
+                          to={`/students/${visit.studentId}`}
+                          className="dashboard-list-item"
+                        >
+                          <div>
+                            <strong>{visit.profesional}</strong>
+                            <p>{visit.studentName} · {visit.studentLegajo}</p>
+                          </div>
+                          <span>{visit.fecha}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card dashboard-card">
+                  <h2>Últimas visitas programadas</h2>
+
+                  {recentScheduledVisits.length === 0 ? (
+                    <p>No hay visitas programadas.</p>
+                  ) : (
+                    <div className="dashboard-list dashboard-list-compact">
+                      {recentScheduledVisits.slice(0, 4).map((visit) => (
+                        <Link
+                          key={`visit-scheduled-${visit.id}`}
                           to={`/students/${visit.studentId}`}
                           className="dashboard-list-item"
                         >
@@ -370,25 +428,27 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="card dashboard-card dashboard-section-spacing">
-                <h2>Por integrador</h2>
+              {user?.role === "admin" && (
+                <div className="card dashboard-card dashboard-section-spacing">
+                  <h2>Por integrador</h2>
 
-                {studentsByIntegrator.length === 0 ? (
-                  <p>No hay datos disponibles.</p>
-                ) : (
-                  <div className="dashboard-list dashboard-list-compact">
-                    {studentsByIntegrator.map((item) => (
-                      <div key={item.name} className="dashboard-list-item">
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>Alumnos asignados</p>
+                  {studentsByIntegrator.length === 0 ? (
+                    <p>No hay datos disponibles.</p>
+                  ) : (
+                    <div className="dashboard-list dashboard-list-compact">
+                      {studentsByIntegrator.map((item) => (
+                        <div key={item.name} className="dashboard-list-item">
+                          <div>
+                            <strong>{item.name}</strong>
+                            <p>Alumnos asignados</p>
+                          </div>
+                          <span className="dashboard-badge">{item.count}</span>
                         </div>
-                        <span className="dashboard-badge">{item.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </aside>
           </section>
         </>

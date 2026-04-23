@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import StudentDetail from "./pages/StudentDetail";
 import CreateStudent from "./pages/CreateStudent";
+import Profile from "./pages/Profile";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 /**
@@ -53,6 +54,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <StudentDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
           </ProtectedRoute>
         }
       />

@@ -30,6 +30,7 @@ export default function Register() {
     full_name: "",
     email: "",
     password: "",
+    phone: "",
     role: "padre_tutor"
   });
 
@@ -99,6 +100,14 @@ export default function Register() {
             name="email"
             placeholder="Correo electrónico"
             value={form.email}
+            onChange={handleChange}
+          />
+
+          <input
+            type="tel"
+            name="phone"
+            placeholder="Teléfono"
+            value={form.phone}
             onChange={handleChange}
           />
 

@@ -20,6 +20,9 @@ import { apiRequest } from "../services/api";
 export default function StudentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const canEditStudentData = currentUser?.role === "admin" || currentUser?.role === "maestro_integrador";
+  const canDeleteStudent = currentUser?.role === "admin";
 
   // Estados principales
   const [student, setStudent] = useState(null);
@@ -39,7 +42,15 @@ export default function StudentDetail() {
     diagnostico: "",
     maestro_integrador: "",
     maestro_grado: "",
-    direccion: ""
+    direccion: "",
+    assigned_padre_tutor_user_ids: [],
+    assigned_profesional_terapeutico_user_ids: [],
+    assigned_maestro_grado_user_ids: []
+  });
+  const [assignmentUsers, setAssignmentUsers] = useState({
+    padre_tutor: [],
+    profesional_terapeutico: [],
+    maestro_grado: []
   });
   const [studentError, setStudentError] = useState("");
   const [studentSuccess, setStudentSuccess] = useState("");
@@ -125,19 +136,244 @@ export default function StudentDetail() {
   const [visitLoading, setVisitLoading] = useState(false);
   const [editingVisitLoading, setEditingVisitLoading] = useState(false);
   const [deletingVisitId, setDeletingVisitId] = useState(null);
+  const [notifyingVisitId, setNotifyingVisitId] = useState(null);
+  const [notificationError, setNotificationError] = useState("");
+  const [notificationSuccess, setNotificationSuccess] = useState("");
+
+  const [assignmentSearch, setAssignmentSearch] = useState({
+    assigned_padre_tutor_user_ids: "",
+    assigned_profesional_terapeutico_user_ids: "",
+    assigned_maestro_grado_user_ids: ""
+  });
+  const [assignmentDropdownOpen, setAssignmentDropdownOpen] = useState({
+    assigned_padre_tutor_user_ids: false,
+    assigned_profesional_terapeutico_user_ids: false,
+    assigned_maestro_grado_user_ids: false
+  });
+
+  const scheduledVisits = visits.filter(
+    (item) => item.estado_calendario === "programada" || item.estado_calendario === "hoy"
+  );
+  const completedVisits = visits.filter(
+    (item) => item.estado_calendario === "efectuada"
+  );
+
+  function normalizeWhatsAppPhone(phone) {
+    if (!phone) {
+      return "";
+    }
+
+    const digits = phone.replace(/\D/g, "");
+
+    if (!digits) {
+      return "";
+    }
+
+    if (digits.startsWith("00")) {
+      return digits.slice(2);
+    }
+
+    return digits;
+  }
+
+  function buildVisitNotificationMessage(visit) {
+    return [
+      `Hola, este es un aviso de E-integración.`,
+      ``,
+      `Alumno: ${student?.nombre || ""} ${student?.apellido || ""}`.trim(),
+      `Legajo: ${student?.legajo || "-"}`,
+      `Visita: ${visit.fecha || "Sin fecha"}`,
+      `Integrador: ${visit.profesional || "Sin dato"}`,
+      `Observaciones: ${visit.observaciones || "Sin observaciones"}`
+    ].join("\n");
+  }
+
+  function getAssignedUsersForNotification() {
+    const rolesToNotify = ["padre_tutor", "profesional_terapeutico", "maestro_grado"];
+    const seenPhones = new Set();
+    const users = [];
+
+    rolesToNotify.forEach((role) => {
+      const assigned = student?.assigned_users_by_role?.[role] || [];
+
+      assigned.forEach((assignedUser) => {
+        const normalizedPhone = normalizeWhatsAppPhone(assignedUser.phone);
+
+        if (!normalizedPhone || seenPhones.has(normalizedPhone)) {
+          return;
+        }
+
+        seenPhones.add(normalizedPhone);
+        users.push({
+          ...assignedUser,
+          normalizedPhone
+        });
+      });
+    });
+
+    return users;
+  }
+
+  function handleSendVisitNotification(visit) {
+    const recipients = getAssignedUsersForNotification();
+
+    setNotificationError("");
+    setNotificationSuccess("");
+
+    if (recipients.length === 0) {
+      setNotificationError("No hay usuarios asignados con teléfono válido para notificar por WhatsApp.");
+      return;
+    }
+
+    setNotifyingVisitId(visit.id);
+
+    const encodedMessage = encodeURIComponent(buildVisitNotificationMessage(visit));
+
+    recipients.forEach((recipient, index) => {
+      setTimeout(() => {
+        window.open(
+          `https://wa.me/${recipient.normalizedPhone}?text=${encodedMessage}`,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      }, index * 300);
+    });
+
+    setNotificationSuccess(
+      `Se abrieron chats de WhatsApp Web para ${recipients.length} contacto(s). Si el navegador bloquea ventanas, habilita pop-ups para continuar.`
+    );
+    setNotifyingVisitId(null);
+  }
+
+  function toggleAssignmentDropdown(fieldName) {
+    setAssignmentDropdownOpen({
+      ...assignmentDropdownOpen,
+      [fieldName]: !assignmentDropdownOpen[fieldName]
+    });
+  }
+
+  function closeAssignmentDropdown(fieldName) {
+    setAssignmentDropdownOpen({
+      ...assignmentDropdownOpen,
+      [fieldName]: false
+    });
+  }
+
+  function handleAssignmentSearchChange(fieldName, value) {
+    setAssignmentSearch({
+      ...assignmentSearch,
+      [fieldName]: value
+    });
+  }
+
+  function toggleAssignedUser(fieldName, userId) {
+    const selected = studentForm[fieldName] || [];
+    const alreadySelected = selected.includes(userId);
+
+    if (!alreadySelected && selected.length >= 3) {
+      return;
+    }
+
+    const updated = alreadySelected
+      ? selected.filter((item) => item !== userId)
+      : [...selected, userId];
+
+    setStudentForm({
+      ...studentForm,
+      [fieldName]: updated
+    });
+  }
+
+  function renderAssignmentSelector(fieldName, roleName, label) {
+    const selectedIds = studentForm[fieldName] || [];
+    const searchText = (assignmentSearch[fieldName] || "").trim().toLowerCase();
+    const candidates = assignmentUsers[roleName] || [];
+    const filteredCandidates = searchText
+      ? candidates.filter((candidate) => (
+          candidate.full_name.toLowerCase().includes(searchText)
+          || candidate.email.toLowerCase().includes(searchText)
+        ))
+      : candidates;
+
+    const selectedUsers = candidates.filter((candidate) => selectedIds.includes(candidate.id));
+
+    return (
+      <div className="full-width assignment-selector" key={fieldName}>
+        <label>{label} (hasta 3)</label>
+
+        <button
+          type="button"
+          className="assignment-dropdown-trigger"
+          onClick={() => toggleAssignmentDropdown(fieldName)}
+        >
+          {selectedUsers.length > 0
+            ? `${selectedUsers.length} seleccionado(s)`
+            : "Seleccionar usuarios"}
+        </button>
+
+        {assignmentDropdownOpen[fieldName] && (
+          <div className="assignment-dropdown-panel">
+            <input
+              type="text"
+              value={assignmentSearch[fieldName] || ""}
+              onChange={(e) => handleAssignmentSearchChange(fieldName, e.target.value)}
+              placeholder="Buscar por nombre o email"
+              className="assignment-search-input"
+            />
+
+            <div className="assignment-dropdown-list">
+              {filteredCandidates.length === 0 ? (
+                <p className="assignment-empty">Sin resultados.</p>
+              ) : (
+                filteredCandidates.map((candidate) => {
+                  const isChecked = selectedIds.includes(candidate.id);
+                  const disableUnchecked = !isChecked && selectedIds.length >= 3;
+
+                  return (
+                    <label key={candidate.id} className={`assignment-option ${disableUnchecked ? "assignment-option-disabled" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={disableUnchecked}
+                        onChange={() => toggleAssignedUser(fieldName, candidate.id)}
+                      />
+                      <span>{candidate.full_name} ({candidate.email})</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="assignment-dropdown-footer">
+              <span>{selectedIds.length}/3 seleccionados</span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => closeAssignmentDropdown(fieldName)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   /**
    * Verifica sesión y carga datos
    */
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "null");
-
-    if (!user) {
+    if (!currentUser) {
       navigate("/");
       return;
     }
 
     fetchStudentData();
+
+    if (canEditStudentData) {
+      loadAssignmentUsers();
+    }
   }, [id]);
 
   /**
@@ -157,9 +393,25 @@ export default function StudentDetail() {
       diagnostico: student.diagnostico || "",
       maestro_integrador: student.maestro_integrador || "",
       maestro_grado: student.maestro_grado || "",
-      direccion: student.direccion || ""
+      direccion: student.direccion || "",
+      assigned_padre_tutor_user_ids: student.assigned_user_ids_by_role?.padre_tutor || [],
+      assigned_profesional_terapeutico_user_ids: student.assigned_user_ids_by_role?.profesional_terapeutico || [],
+      assigned_maestro_grado_user_ids: student.assigned_user_ids_by_role?.maestro_grado || []
     });
   }, [student]);
+
+  async function loadAssignmentUsers() {
+    try {
+      const usersByRole = await apiRequest("/students/assignment-users");
+      setAssignmentUsers({
+        padre_tutor: usersByRole.padre_tutor || [],
+        profesional_terapeutico: usersByRole.profesional_terapeutico || [],
+        maestro_grado: usersByRole.maestro_grado || []
+      });
+    } catch (error) {
+      console.error("Error cargando usuarios asignables:", error);
+    }
+  }
 
   /**
    * Carga la foto del alumno usando fetch autenticado y genera una URL temporal.
@@ -274,6 +526,19 @@ export default function StudentDetail() {
    * Maneja cambios en el formulario de datos del alumno
    */
   function handleStudentFormChange(e) {
+    if (
+      e.target.name === "assigned_padre_tutor_user_ids"
+      || e.target.name === "assigned_profesional_terapeutico_user_ids"
+      || e.target.name === "assigned_maestro_grado_user_ids"
+    ) {
+      const selectedIds = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
+      setStudentForm({
+        ...studentForm,
+        [e.target.name]: selectedIds
+      });
+      return;
+    }
+
     setStudentForm({
       ...studentForm,
       [e.target.name]: e.target.value
@@ -284,6 +549,10 @@ export default function StudentDetail() {
    * Activa edición de datos del alumno
    */
   function handleStartEditStudent() {
+    if (!canEditStudentData) {
+      return;
+    }
+
     setStudentError("");
     setStudentSuccess("");
     setEditingStudent(true);
@@ -303,7 +572,10 @@ export default function StudentDetail() {
         diagnostico: student.diagnostico || "",
         maestro_integrador: student.maestro_integrador || "",
         maestro_grado: student.maestro_grado || "",
-        direccion: student.direccion || ""
+        direccion: student.direccion || "",
+        assigned_padre_tutor_user_ids: student.assigned_user_ids_by_role?.padre_tutor || [],
+        assigned_profesional_terapeutico_user_ids: student.assigned_user_ids_by_role?.profesional_terapeutico || [],
+        assigned_maestro_grado_user_ids: student.assigned_user_ids_by_role?.maestro_grado || []
       });
     }
 
@@ -1197,23 +1469,25 @@ export default function StudentDetail() {
         <div className="topbar-actions">
           <button
             type="button"
-            className="topbar-link-button"
+            className="topbar-link-button report-highlight-button"
             onClick={handleDownloadProgressReport}
           >
             Generación de reporte
           </button>
           <Link to="/dashboard" className="topbar-link">
-            Dashboard
+            Panel principal
           </Link>
           <Link to="/students">Volver</Link>
-          <button
-            type="button"
-            className="danger-button"
-            onClick={handleDeleteStudent}
-            disabled={deletingStudent}
-          >
-            {deletingStudent ? "Eliminando alumno..." : "Borrar alumno"}
-          </button>
+          {canDeleteStudent && (
+            <button
+              type="button"
+              className="danger-button"
+              onClick={handleDeleteStudent}
+              disabled={deletingStudent}
+            >
+              {deletingStudent ? "Eliminando alumno..." : "Borrar alumno"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -1236,7 +1510,7 @@ export default function StudentDetail() {
           onClick={() => setActiveTab("informes")}
           className={activeTab === "informes" ? "active" : ""}
         >
-          Informes
+          Informes terapéuticos
         </button>
 
         <button
@@ -1264,29 +1538,33 @@ export default function StudentDetail() {
               )}
 
               <div className="student-photo-actions">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleStudentPhotoChange}
-                />
+                {canEditStudentData && (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleStudentPhotoChange}
+                    />
 
-                <button
-                  type="button"
-                  onClick={handleUploadStudentPhoto}
-                  disabled={photoLoading}
-                >
-                  {photoLoading ? "Subiendo..." : student.has_photo ? "Reemplazar foto" : "Subir foto"}
-                </button>
+                    <button
+                      type="button"
+                      onClick={handleUploadStudentPhoto}
+                      disabled={photoLoading}
+                    >
+                      {photoLoading ? "Subiendo..." : student.has_photo ? "Reemplazar foto" : "Subir foto"}
+                    </button>
 
-                {student.has_photo && (
-                  <button
-                    type="button"
-                    className="danger-button"
-                    onClick={handleDeleteStudentPhoto}
-                    disabled={deletingPhoto}
-                  >
-                    {deletingPhoto ? "Eliminando..." : "Eliminar foto"}
-                  </button>
+                    {student.has_photo && (
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={handleDeleteStudentPhoto}
+                        disabled={deletingPhoto}
+                      >
+                        {deletingPhoto ? "Eliminando..." : "Eliminar foto"}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -1298,11 +1576,11 @@ export default function StudentDetail() {
               <div className="section-header">
                 <h2>Datos generales</h2>
 
-                {!editingStudent ? (
+                {!editingStudent && canEditStudentData ? (
                   <button type="button" onClick={handleStartEditStudent}>
                     Editar datos
                   </button>
-                ) : (
+                ) : editingStudent ? (
                   <div className="content-actions">
                     <button
                       type="button"
@@ -1320,7 +1598,7 @@ export default function StudentDetail() {
                       Cancelar
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {studentError && <p className="error">{studentError}</p>}
@@ -1336,6 +1614,9 @@ export default function StudentDetail() {
                   <p><strong>Maestro integrador:</strong> {student.maestro_integrador}</p>
                   <p><strong>Maestro de grado:</strong> {student.maestro_grado}</p>
                   <p><strong>Dirección:</strong> {student.direccion}</p>
+                  <p><strong>Padres/tutores asignados:</strong> {(student.assigned_users_by_role?.padre_tutor || []).map((item) => item.full_name).join(", ") || "Sin asignar"}</p>
+                  <p><strong>Profesionales terapéuticos asignados:</strong> {(student.assigned_users_by_role?.profesional_terapeutico || []).map((item) => item.full_name).join(", ") || "Sin asignar"}</p>
+                  <p><strong>Docentes asignados:</strong> {(student.assigned_users_by_role?.maestro_grado || []).map((item) => item.full_name).join(", ") || "Sin asignar"}</p>
                 </div>
               ) : (
                 <div className="embedded-form">
@@ -1429,6 +1710,24 @@ export default function StudentDetail() {
                         onChange={handleStudentFormChange}
                       />
                     </div>
+
+                    {renderAssignmentSelector(
+                      "assigned_padre_tutor_user_ids",
+                      "padre_tutor",
+                      "Padre/tutor"
+                    )}
+
+                    {renderAssignmentSelector(
+                      "assigned_profesional_terapeutico_user_ids",
+                      "profesional_terapeutico",
+                      "Profesional terapéutico"
+                    )}
+
+                    {renderAssignmentSelector(
+                      "assigned_maestro_grado_user_ids",
+                      "maestro_grado",
+                      "Docente"
+                    )}
                   </div>
                 </div>
               )}
@@ -1442,16 +1741,18 @@ export default function StudentDetail() {
           <div className="section-header">
             <h2>Contenidos adaptados</h2>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowContentForm(!showContentForm);
-                setContentError("");
-                setContentSuccess("");
-              }}
-            >
-              {showContentForm ? "Cancelar" : "Nuevo contenido"}
-            </button>
+            {canEditStudentData && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowContentForm(!showContentForm);
+                  setContentError("");
+                  setContentSuccess("");
+                }}
+              >
+                {showContentForm ? "Cancelar" : "Nuevo contenido"}
+              </button>
+            )}
           </div>
 
           {showContentForm && (
@@ -1599,13 +1900,15 @@ export default function StudentDetail() {
                                     {attachment.original_name}
                                   </button>
 
-                                  <button
-                                    type="button"
-                                    className="attachment-remove-button"
-                                    onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
-                                  >
-                                    Eliminar
-                                  </button>
+                                  {canEditStudentData && (
+                                    <button
+                                      type="button"
+                                      className="attachment-remove-button"
+                                      onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
+                                    >
+                                      Eliminar
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1641,21 +1944,25 @@ export default function StudentDetail() {
                       </div>
 
                       <div className="content-actions">
-                        <button
-                          type="button"
-                          onClick={() => startEditingContent(item)}
-                        >
-                          Editar
-                        </button>
+                        {canEditStudentData && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditingContent(item)}
+                            >
+                              Editar
+                            </button>
 
-                        <button
-                          type="button"
-                          className="danger-button"
-                          onClick={() => handleDeleteContent(item.id)}
-                          disabled={deletingContentId === item.id}
-                        >
-                          {deletingContentId === item.id ? "Eliminando..." : "Borrar"}
-                        </button>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => handleDeleteContent(item.id)}
+                              disabled={deletingContentId === item.id}
+                            >
+                              {deletingContentId === item.id ? "Eliminando..." : "Borrar"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1693,13 +2000,15 @@ export default function StudentDetail() {
                                 {attachment.original_name}
                               </button>
 
-                              <button
-                                type="button"
-                                className="attachment-remove-button"
-                                onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
-                              >
-                                Eliminar
-                              </button>
+                              {canEditStudentData && (
+                                <button
+                                  type="button"
+                                  className="attachment-remove-button"
+                                  onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
+                                >
+                                  Eliminar
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1716,18 +2025,20 @@ export default function StudentDetail() {
       {activeTab === "informes" && (
         <section className="card">
           <div className="section-header">
-            <h2>Informes</h2>
+            <h2>Informes terapéuticos</h2>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowReportForm(!showReportForm);
-                setReportError("");
-                setReportSuccess("");
-              }}
-            >
-              {showReportForm ? "Cancelar" : "Nuevo informe"}
-            </button>
+            {canEditStudentData && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReportForm(!showReportForm);
+                  setReportError("");
+                  setReportSuccess("");
+                }}
+              >
+                {showReportForm ? "Cancelar" : "Nuevo informe"}
+              </button>
+            )}
           </div>
 
           {showReportForm && (
@@ -1897,21 +2208,25 @@ export default function StudentDetail() {
                       </div>
 
                       <div className="content-actions">
-                        <button
-                          type="button"
-                          onClick={() => startEditingReport(item)}
-                        >
-                          Editar
-                        </button>
+                        {canEditStudentData && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditingReport(item)}
+                            >
+                              Editar
+                            </button>
 
-                        <button
-                          type="button"
-                          className="danger-button"
-                          onClick={() => handleDeleteReport(item.id)}
-                          disabled={deletingReportId === item.id}
-                        >
-                          {deletingReportId === item.id ? "Eliminando..." : "Borrar"}
-                        </button>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              onClick={() => handleDeleteReport(item.id)}
+                              disabled={deletingReportId === item.id}
+                            >
+                              {deletingReportId === item.id ? "Eliminando..." : "Borrar"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1941,16 +2256,18 @@ export default function StudentDetail() {
           <div className="section-header">
             <h2>Calendario de visitas</h2>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowVisitForm(!showVisitForm);
-                setVisitError("");
-                setVisitSuccess("");
-              }}
-            >
-              {showVisitForm ? "Cancelar" : "Nueva visita"}
-            </button>
+            {canEditStudentData && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVisitForm(!showVisitForm);
+                  setVisitError("");
+                  setVisitSuccess("");
+                }}
+              >
+                {showVisitForm ? "Cancelar" : "Nueva visita"}
+              </button>
+            )}
           </div>
 
           {showVisitForm && (
@@ -1999,96 +2316,231 @@ export default function StudentDetail() {
 
           {visitError && <p className="error">{visitError}</p>}
           {visitSuccess && <p className="success">{visitSuccess}</p>}
+          {notificationError && <p className="error">{notificationError}</p>}
+          {notificationSuccess && <p className="success">{notificationSuccess}</p>}
 
           {visits.length === 0 ? (
             <p>No hay visitas registradas.</p>
           ) : (
-            visits.map((item) => (
-              <div key={item.id} className="content-card">
-                {editingVisitId === item.id ? (
-                  <div className="embedded-form">
-                    <div className="form-grid">
+            <>
+              <h3 className="visits-group-title">Próximas y programadas</h3>
+              {scheduledVisits.length === 0 ? (
+                <p>No hay visitas programadas.</p>
+              ) : (
+                scheduledVisits.map((item) => (
+                  <div key={item.id} className="content-card">
+                    {editingVisitId === item.id ? (
+                      <div className="embedded-form">
+                        <div className="form-grid">
+                          <div>
+                            <label>Fecha</label>
+                            <input
+                              type="date"
+                              name="fecha"
+                              value={editVisitForm.fecha}
+                              onChange={handleEditVisitChange}
+                            />
+                          </div>
+
+                          <div>
+                            <label>Profesional</label>
+                            <input
+                              type="text"
+                              name="profesional"
+                              value={editVisitForm.profesional}
+                              onChange={handleEditVisitChange}
+                            />
+                          </div>
+
+                          <div className="full-width">
+                            <label>Observaciones</label>
+                            <textarea
+                              name="observaciones"
+                              value={editVisitForm.observaciones}
+                              onChange={handleEditVisitChange}
+                              rows="5"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="form-actions form-actions-left">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditedVisit(item.id)}
+                            disabled={editingVisitLoading}
+                          >
+                            {editingVisitLoading ? "Guardando..." : "Guardar cambios"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={cancelEditingVisit}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                       <div>
-                        <label>Fecha</label>
-                        <input
-                          type="date"
-                          name="fecha"
-                          value={editVisitForm.fecha}
-                          onChange={handleEditVisitChange}
-                        />
+                        <div className="content-card-header">
+                          <div>
+                            <p>
+                              <strong>Fecha:</strong> {item.fecha}{" "}
+                              <span className={`visit-status-badge visit-status-${item.estado_calendario || "sin_fecha"}`}>
+                                {item.estado_calendario_label || "Sin fecha válida"}
+                              </span>
+                            </p>
+                            <p><strong>Integrador:</strong> {item.profesional}</p>
+                          </div>
+
+                          <div className="content-actions">
+                            <button
+                              type="button"
+                              onClick={() => handleSendVisitNotification(item)}
+                              disabled={notifyingVisitId === item.id}
+                            >
+                              {notifyingVisitId === item.id ? "Enviando..." : "Enviar notificación"}
+                            </button>
+
+                            {canEditStudentData && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingVisit(item)}
+                                >
+                                  Editar
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="danger-button"
+                                  onClick={() => handleDeleteVisit(item.id)}
+                                  disabled={deletingVisitId === item.id}
+                                >
+                                  {deletingVisitId === item.id ? "Eliminando..." : "Borrar"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="content-description">{item.observaciones}</p>
                       </div>
-
-                      <div>
-                        <label>Profesional</label>
-                        <input
-                          type="text"
-                          name="profesional"
-                          value={editVisitForm.profesional}
-                          onChange={handleEditVisitChange}
-                        />
-                      </div>
-
-                      <div className="full-width">
-                        <label>Observaciones</label>
-                        <textarea
-                          name="observaciones"
-                          value={editVisitForm.observaciones}
-                          onChange={handleEditVisitChange}
-                          rows="5"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-actions form-actions-left">
-                      <button
-                        type="button"
-                        onClick={() => handleSaveEditedVisit(item.id)}
-                        disabled={editingVisitLoading}
-                      >
-                        {editingVisitLoading ? "Guardando..." : "Guardar cambios"}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={cancelEditingVisit}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                    )}
                   </div>
-                ) : (
-                  <div>
-                    <div className="content-card-header">
+                ))
+              )}
+
+              <h3 className="visits-group-title">Visitas efectuadas</h3>
+              {completedVisits.length === 0 ? (
+                <p>No hay visitas efectuadas.</p>
+              ) : (
+                completedVisits.map((item) => (
+                  <div key={item.id} className="content-card">
+                    {editingVisitId === item.id ? (
+                      <div className="embedded-form">
+                        <div className="form-grid">
+                          <div>
+                            <label>Fecha</label>
+                            <input
+                              type="date"
+                              name="fecha"
+                              value={editVisitForm.fecha}
+                              onChange={handleEditVisitChange}
+                            />
+                          </div>
+
+                          <div>
+                            <label>Profesional</label>
+                            <input
+                              type="text"
+                              name="profesional"
+                              value={editVisitForm.profesional}
+                              onChange={handleEditVisitChange}
+                            />
+                          </div>
+
+                          <div className="full-width">
+                            <label>Observaciones</label>
+                            <textarea
+                              name="observaciones"
+                              value={editVisitForm.observaciones}
+                              onChange={handleEditVisitChange}
+                              rows="5"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="form-actions form-actions-left">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditedVisit(item.id)}
+                            disabled={editingVisitLoading}
+                          >
+                            {editingVisitLoading ? "Guardando..." : "Guardar cambios"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={cancelEditingVisit}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                       <div>
-                        <p><strong>Fecha:</strong> {item.fecha}</p>
-                        <p><strong>Profesional:</strong> {item.profesional}</p>
+                        <div className="content-card-header">
+                          <div>
+                            <p>
+                              <strong>Fecha:</strong> {item.fecha}{" "}
+                              <span className={`visit-status-badge visit-status-${item.estado_calendario || "sin_fecha"}`}>
+                                {item.estado_calendario_label || "Sin fecha válida"}
+                              </span>
+                            </p>
+                            <p><strong>Integrador:</strong> {item.profesional}</p>
+                          </div>
+
+                          <div className="content-actions">
+                            <button
+                              type="button"
+                              onClick={() => handleSendVisitNotification(item)}
+                              disabled={notifyingVisitId === item.id}
+                            >
+                              {notifyingVisitId === item.id ? "Enviando..." : "Enviar notificación"}
+                            </button>
+
+                            {canEditStudentData && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingVisit(item)}
+                                >
+                                  Editar
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="danger-button"
+                                  onClick={() => handleDeleteVisit(item.id)}
+                                  disabled={deletingVisitId === item.id}
+                                >
+                                  {deletingVisitId === item.id ? "Eliminando..." : "Borrar"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="content-description">{item.observaciones}</p>
                       </div>
-
-                      <div className="content-actions">
-                        <button
-                          type="button"
-                          onClick={() => startEditingVisit(item)}
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          className="danger-button"
-                          onClick={() => handleDeleteVisit(item.id)}
-                          disabled={deletingVisitId === item.id}
-                        >
-                          {deletingVisitId === item.id ? "Eliminando..." : "Borrar"}
-                        </button>
-                      </div>
-                    </div>
-
-                    <p className="content-description">{item.observaciones}</p>
+                    )}
                   </div>
-                )}
-              </div>
-            ))
+                ))
+              )}
+            </>
           )}
         </section>
       )}

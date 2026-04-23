@@ -24,6 +24,7 @@ export default function Students() {
   const [deletingStudentId, setDeletingStudentId] = useState(null);
 
   const user = JSON.parse(localStorage.getItem("user") || "null");
+  const canDeleteStudents = user?.role === "maestro_integrador";
 
   /**
    * Carga inicial de alumnos
@@ -104,7 +105,7 @@ export default function Students() {
 
         <div className="topbar-actions">
           <Link to="/dashboard" className="topbar-link">
-            Dashboard
+            Panel principal
           </Link>
           <span>{user?.full_name} ({user?.role})</span>
           <button onClick={handleLogout}>Salir</button>
@@ -157,14 +158,16 @@ export default function Students() {
                         Ver legajo
                       </Link>
 
-                      <button
-                        type="button"
-                        className="danger-button"
-                        onClick={() => handleDeleteStudent(student)}
-                        disabled={deletingStudentId === student.id}
-                      >
-                        {deletingStudentId === student.id ? "Eliminando..." : "Borrar"}
-                      </button>
+                      {canDeleteStudents && (
+                        <button
+                          type="button"
+                          className="danger-button"
+                          onClick={() => handleDeleteStudent(student)}
+                          disabled={deletingStudentId === student.id}
+                        >
+                          {deletingStudentId === student.id ? "Eliminando..." : "Borrar"}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -153,6 +153,18 @@ button:hover {
   background: #dbeafe;
 }
 
+.report-highlight-button {
+  background: #1976d2;
+  color: white;
+  font-weight: bold;
+  border: 1px solid #125ea7;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.25);
+}
+
+.report-highlight-button:hover {
+  background: #125ea7;
+}
+
 .search-form {
   display: flex;
   gap: 12px;
@@ -403,6 +415,114 @@ button:hover {
   background: #b91c1c;
 }
 
+.assignment-selector {
+  position: relative;
+}
+
+.assignment-dropdown-trigger {
+  width: 100%;
+  margin-top: 10px;
+  background: white;
+  color: #1f2937;
+  border: 1px solid #d0d7de;
+  text-align: left;
+  font-weight: normal;
+}
+
+.assignment-dropdown-trigger:hover {
+  background: #f8fafc;
+}
+
+.assignment-dropdown-panel {
+  margin-top: 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: white;
+  padding: 10px;
+}
+
+.assignment-search-input {
+  margin-top: 0;
+}
+
+.assignment-dropdown-list {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding-right: 4px;
+}
+
+.assignment-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  font-weight: normal;
+}
+
+.assignment-option input[type="checkbox"] {
+  width: auto;
+  margin-top: 0;
+}
+
+.assignment-option-disabled {
+  opacity: 0.55;
+}
+
+.assignment-empty {
+  margin: 8px 0;
+  color: #6b7280;
+}
+
+.assignment-dropdown-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.assignment-dropdown-footer button {
+  margin-top: 0;
+  padding: 8px 12px;
+}
+
+.visits-group-title {
+  margin-top: 22px;
+  margin-bottom: 12px;
+  color: #374151;
+  font-size: 18px;
+}
+
+.visit-status-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.visit-status-efectuada {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.visit-status-programada {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.visit-status-hoy {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.visit-status-sin_fecha {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
 /* Dashboard */
 .dashboard-grid {
   max-width: 1100px;
@@ -646,4 +766,147 @@ button:hover {
   .student-data-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Profile Page */
+.card-content {
+  padding-top: 24px;
+}
+
+.error-box {
+  background-color: #fee;
+  border: 1px solid #fcc;
+  color: #c33;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.success-box {
+  background-color: #efe;
+  border: 1px solid #cfc;
+  color: #3c3;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-section h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+  color: #1f2937;
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-field label {
+  font-weight: bold;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.profile-field p {
+  color: #1f2937;
+  font-size: 16px;
+  margin: 0;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 4px solid #1976d2;
+}
+
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-weight: bold;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.form-group input {
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 16px;
+  font-family: Arial, sans-serif;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.profile-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+.primary-button {
+  padding: 12px 24px;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background-color: #1565c0;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  padding: 12px 24px;
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background-color: #4b5563;
+}
+
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

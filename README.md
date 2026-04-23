@@ -220,3 +220,4 @@ Proyecto en desarrollo académico (TFG), con flujo completo de:
 - carga de foto
 - carga/descarga de adjuntos de informes
 - dashboard con métricas y alertas
+- calendario y seguimiento de visitas

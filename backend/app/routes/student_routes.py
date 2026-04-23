@@ -135,6 +135,7 @@ def get_student_assignments_by_role(student_id):
             "id": assigned_user.id,
             "full_name": assigned_user.full_name,
             "email": assigned_user.email,
+            "phone": assigned_user.phone,
             "role": assigned_user.role
         })
 

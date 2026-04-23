@@ -364,6 +364,13 @@ button:hover {
   gap: 8px;
 }
 
+.attachment-list-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .attachment-download-button {
   margin-top: 0;
   width: fit-content;
@@ -373,6 +380,17 @@ button:hover {
 
 .attachment-download-button:hover {
   background: #bfdbfe;
+}
+
+.attachment-remove-button {
+  margin-top: 0;
+  width: fit-content;
+  background: #dc2626;
+  color: white;
+}
+
+.attachment-remove-button:hover {
+  background: #b91c1c;
 }
 
 /* Dashboard */

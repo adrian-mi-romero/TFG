@@ -700,6 +700,28 @@ export default function StudentDetail() {
   }
 
   /**
+   * Elimina un archivo adjunto de contenido adaptado.
+   */
+  async function handleDeleteContentAttachment(contentId, attachmentId) {
+    const confirmed = window.confirm("¿Seguro que quieres eliminar este archivo adjunto?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/students/${id}/contents/${contentId}/attachments/${attachmentId}`, {
+        method: "DELETE"
+      });
+
+      setContentSuccess("Adjunto eliminado correctamente.");
+      await refreshContents();
+    } catch (err) {
+      setContentError(err.message);
+    }
+  }
+
+  /**
    * Maneja cambios en formulario de creación de informe
    */
   function handleReportChange(e) {
@@ -1519,14 +1541,23 @@ export default function StudentDetail() {
                             <p><strong>Adjuntos actuales</strong></p>
                             <div className="attachment-list">
                               {item.attachments.map((attachment) => (
-                                <button
-                                  key={attachment.id}
-                                  type="button"
-                                  className="attachment-download-button"
-                                  onClick={() => handleDownloadContentAttachment(item.id, attachment)}
-                                >
-                                  {attachment.original_name}
-                                </button>
+                                <div key={attachment.id} className="attachment-list-item">
+                                  <button
+                                    type="button"
+                                    className="attachment-download-button"
+                                    onClick={() => handleDownloadContentAttachment(item.id, attachment)}
+                                  >
+                                    {attachment.original_name}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="attachment-remove-button"
+                                    onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -1604,14 +1635,23 @@ export default function StudentDetail() {
                         <p><strong>Archivos adjuntos</strong></p>
                         <div className="attachment-list">
                           {item.attachments.map((attachment) => (
-                            <button
-                              key={attachment.id}
-                              type="button"
-                              className="attachment-download-button"
-                              onClick={() => handleDownloadContentAttachment(item.id, attachment)}
-                            >
-                              {attachment.original_name}
-                            </button>
+                            <div key={attachment.id} className="attachment-list-item">
+                              <button
+                                type="button"
+                                className="attachment-download-button"
+                                onClick={() => handleDownloadContentAttachment(item.id, attachment)}
+                              >
+                                {attachment.original_name}
+                              </button>
+
+                              <button
+                                type="button"
+                                className="attachment-remove-button"
+                                onClick={() => handleDeleteContentAttachment(item.id, attachment.id)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
                           ))}
                         </div>
                       </div>

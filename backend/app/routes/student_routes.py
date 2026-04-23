@@ -883,6 +883,53 @@ def download_content_attachment(student_id, content_id, attachment_id):
     )
 
 
+@student_bp.route(
+    "/students/<int:student_id>/contents/<int:content_id>/attachments/<int:attachment_id>",
+    methods=["DELETE"]
+)
+def delete_content_attachment(student_id, content_id, attachment_id):
+    """
+    Elimina un archivo adjunto de contenido adaptado.
+    """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+
+    content = db.session.get(AdaptedContent, content_id)
+
+    if not content:
+        return jsonify({"error": "Contenido no encontrado"}), 404
+
+    if content.student_id != student.id:
+        return jsonify({"error": "El contenido no pertenece al alumno indicado"}), 400
+
+    attachment = db.session.get(ContentAttachment, attachment_id)
+
+    if not attachment:
+        return jsonify({"error": "Adjunto no encontrado"}), 404
+
+    if attachment.content_id != content.id:
+        return jsonify({"error": "El adjunto no pertenece al contenido indicado"}), 400
+
+    delete_content_attachment_file_if_exists(attachment)
+
+    db.session.delete(attachment)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Adjunto eliminado correctamente"
+    }), 200
+
+
 @student_bp.route("/students/<int:student_id>/reports", methods=["GET"])
 def get_student_reports(student_id):
     """

@@ -77,7 +77,7 @@ Definida en `backend/app/config.py`:
 - Puerto: `3307`
 - DB: `school_integration_db`
 - User: `school_user`
-- Password: `school_pass`
+
 
 ---
 

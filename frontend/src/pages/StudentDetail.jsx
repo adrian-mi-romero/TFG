@@ -1446,6 +1446,7 @@ export default function StudentDetail() {
 
                     <p className="content-description">{item.descripcion}</p>
 
+                    <p className="progress-label">Progreso del contenido</p>
                     <div className="progress-bar">
                       <div
                         className="progress-fill"

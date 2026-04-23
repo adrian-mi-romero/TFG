@@ -41,6 +41,9 @@ def create_app():
 
         # Asegura la existencia de la carpeta de uploads
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+        os.makedirs(app.config["REPORTS_UPLOAD_FOLDER"], exist_ok=True)
+        os.makedirs(app.config["STUDENTS_UPLOAD_FOLDER"], exist_ok=True)
+        os.makedirs(app.config["CONTENTS_UPLOAD_FOLDER"], exist_ok=True)
 
         # Inserta datos iniciales si la DB está vacía
         # seed_database()

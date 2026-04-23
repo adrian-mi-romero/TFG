@@ -127,6 +127,13 @@ class AdaptedContent(db.Model):
     descripcion = db.Column(db.Text, nullable=True)
     progreso = db.Column(db.Integer, default=0, nullable=False)
 
+    attachments = db.relationship(
+        "ContentAttachment",
+        backref="content",
+        cascade="all, delete-orphan",
+        lazy=True
+    )
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -134,7 +141,33 @@ class AdaptedContent(db.Model):
             "materia": self.materia,
             "titulo": self.titulo,
             "descripcion": self.descripcion,
-            "progreso": self.progreso
+            "progreso": self.progreso,
+            "attachments": [attachment.to_dict() for attachment in self.attachments],
+            "has_attachments": len(self.attachments) > 0
+        }
+
+
+class ContentAttachment(db.Model):
+    __tablename__ = "content_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    content_id = db.Column(db.Integer, db.ForeignKey("adapted_contents.id"), nullable=False, index=True)
+
+    original_name = db.Column(db.String(255), nullable=False)
+    saved_name = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    mime_type = db.Column(db.String(150), nullable=True)
+    file_size = db.Column(db.BigInteger, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "content_id": self.content_id,
+            "original_name": self.original_name,
+            "saved_name": self.saved_name,
+            "file_path": self.file_path,
+            "mime_type": self.mime_type,
+            "file_size": self.file_size
         }
 
 

@@ -60,7 +60,8 @@ export default function StudentDetail() {
     materia: "",
     titulo: "",
     descripcion: "",
-    progreso: 0
+    progreso: 0,
+    attachments: []
   });
 
   // Estados para editar contenido
@@ -69,7 +70,8 @@ export default function StudentDetail() {
     materia: "",
     titulo: "",
     descripcion: "",
-    progreso: 0
+    progreso: 0,
+    attachments: []
   });
 
   // Estados para informes
@@ -452,6 +454,14 @@ export default function StudentDetail() {
    * Actualiza campos del formulario de creación de contenido
    */
   function handleContentChange(e) {
+    if (e.target.name === "attachments") {
+      setContentForm({
+        ...contentForm,
+        attachments: Array.from(e.target.files || [])
+      });
+      return;
+    }
+
     setContentForm({
       ...contentForm,
       [e.target.name]: e.target.value
@@ -466,7 +476,8 @@ export default function StudentDetail() {
       materia: "",
       titulo: "",
       descripcion: "",
-      progreso: 0
+      progreso: 0,
+      attachments: []
     });
   }
 
@@ -475,21 +486,36 @@ export default function StudentDetail() {
    */
   async function handleCreateContent(e) {
     e.preventDefault();
+    const user = JSON.parse(localStorage.getItem("user") || "null");
 
     setContentError("");
     setContentSuccess("");
     setContentLoading(true);
 
     try {
-      await apiRequest(`/students/${id}/contents`, {
-        method: "POST",
-        body: JSON.stringify({
-          materia: contentForm.materia,
-          titulo: contentForm.titulo,
-          descripcion: contentForm.descripcion,
-          progreso: Number(contentForm.progreso)
-        })
+      const formData = new FormData();
+      formData.append("materia", contentForm.materia);
+      formData.append("titulo", contentForm.titulo);
+      formData.append("descripcion", contentForm.descripcion);
+      formData.append("progreso", String(Number(contentForm.progreso)));
+
+      contentForm.attachments.forEach((attachment) => {
+        formData.append("attachments", attachment);
       });
+
+      const response = await fetch(`http://localhost:5000/api/students/${id}/contents`, {
+        method: "POST",
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al crear contenido");
+      }
 
       resetContentForm();
       setShowContentForm(false);
@@ -514,7 +540,8 @@ export default function StudentDetail() {
       materia: content.materia,
       titulo: content.titulo,
       descripcion: content.descripcion || "",
-      progreso: content.progreso
+      progreso: content.progreso,
+      attachments: []
     });
   }
 
@@ -527,7 +554,8 @@ export default function StudentDetail() {
       materia: "",
       titulo: "",
       descripcion: "",
-      progreso: 0
+      progreso: 0,
+      attachments: []
     });
   }
 
@@ -535,6 +563,14 @@ export default function StudentDetail() {
    * Maneja cambios en el formulario de edición de contenido
    */
   function handleEditContentChange(e) {
+    if (e.target.name === "attachments") {
+      setEditContentForm({
+        ...editContentForm,
+        attachments: Array.from(e.target.files || [])
+      });
+      return;
+    }
+
     setEditContentForm({
       ...editContentForm,
       [e.target.name]: e.target.value
@@ -545,20 +581,36 @@ export default function StudentDetail() {
    * Guarda la edición de un contenido
    */
   async function handleSaveEditedContent(contentId) {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
     setContentError("");
     setContentSuccess("");
     setEditingLoading(true);
 
     try {
-      await apiRequest(`/students/${id}/contents/${contentId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          materia: editContentForm.materia,
-          titulo: editContentForm.titulo,
-          descripcion: editContentForm.descripcion,
-          progreso: Number(editContentForm.progreso)
-        })
+      const formData = new FormData();
+      formData.append("materia", editContentForm.materia);
+      formData.append("titulo", editContentForm.titulo);
+      formData.append("descripcion", editContentForm.descripcion);
+      formData.append("progreso", String(Number(editContentForm.progreso)));
+
+      editContentForm.attachments.forEach((attachment) => {
+        formData.append("attachments", attachment);
       });
+
+      const response = await fetch(`http://localhost:5000/api/students/${id}/contents/${contentId}`, {
+        method: "PUT",
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al actualizar contenido");
+      }
 
       setContentSuccess("Contenido actualizado correctamente.");
       cancelEditingContent();
@@ -599,6 +651,51 @@ export default function StudentDetail() {
       setContentError(err.message);
     } finally {
       setDeletingContentId(null);
+    }
+  }
+
+  /**
+   * Descarga un archivo adjunto de contenido adaptado con autenticación.
+   */
+  async function handleDownloadContentAttachment(contentId, attachment) {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
+    setContentError("");
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/students/${id}/contents/${contentId}/attachments/${attachment.id}/download`,
+        {
+          headers: {
+            ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+          }
+        }
+      );
+
+      let data = null;
+
+      if (!response.ok) {
+        try {
+          data = await response.json();
+        } catch (error) {
+          data = null;
+        }
+
+        throw new Error(data?.error || "Error al descargar el archivo adjunto");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = attachment.original_name || `adjunto_${attachment.id}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setContentError(err.message);
     }
   }
 
@@ -1333,6 +1430,16 @@ export default function StudentDetail() {
                     onChange={handleContentChange}
                   />
                 </div>
+
+                <div className="full-width">
+                  <label>Adjuntar archivos (uno o más)</label>
+                  <input
+                    type="file"
+                    name="attachments"
+                    multiple
+                    onChange={handleContentChange}
+                  />
+                </div>
               </div>
 
               <div className="form-actions">
@@ -1396,6 +1503,34 @@ export default function StudentDetail() {
                             onChange={handleEditContentChange}
                           />
                         </div>
+
+                        <div className="full-width">
+                          <label>Agregar archivos adjuntos</label>
+                          <input
+                            type="file"
+                            name="attachments"
+                            multiple
+                            onChange={handleEditContentChange}
+                          />
+                        </div>
+
+                        {item.has_attachments && (
+                          <div className="full-width attachment-box">
+                            <p><strong>Adjuntos actuales</strong></p>
+                            <div className="attachment-list">
+                              {item.attachments.map((attachment) => (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  className="attachment-download-button"
+                                  onClick={() => handleDownloadContentAttachment(item.id, attachment)}
+                                >
+                                  {attachment.original_name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="form-actions form-actions-left">
@@ -1449,12 +1584,38 @@ export default function StudentDetail() {
                     <p className="progress-label">Progreso del contenido</p>
                     <div className="progress-bar">
                       <div
-                        className="progress-fill"
+                        className={`progress-fill ${Number(item.progreso) >= 100 ? "progress-fill-complete" : "progress-fill-in-progress"}`}
                         style={{ width: `${item.progreso}%` }}
                       >
                         {item.progreso}%
                       </div>
                     </div>
+
+                    {Number(item.progreso) >= 100 && (
+                      <p className="progress-complete">Objetivo completo</p>
+                    )}
+
+                    {Number(item.progreso) < 100 && (
+                      <p className="progress-in-progress">Objetivo en proceso</p>
+                    )}
+
+                    {item.has_attachments && (
+                      <div className="attachment-box">
+                        <p><strong>Archivos adjuntos</strong></p>
+                        <div className="attachment-list">
+                          {item.attachments.map((attachment) => (
+                            <button
+                              key={attachment.id}
+                              type="button"
+                              className="attachment-download-button"
+                              onClick={() => handleDownloadContentAttachment(item.id, attachment)}
+                            >
+                              {attachment.original_name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

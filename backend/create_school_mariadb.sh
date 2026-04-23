@@ -46,6 +46,7 @@ docker exec -i $CONTAINER_NAME mariadb -u root -p$DB_ROOT_PASSWORD $DB_NAME <<EO
 DROP TABLE IF EXISTS student_assignments;
 DROP TABLE IF EXISTS visits;
 DROP TABLE IF EXISTS reports;
+DROP TABLE IF EXISTS content_attachments;
 DROP TABLE IF EXISTS adapted_contents;
 DROP TABLE IF EXISTS students;
 DROP TABLE IF EXISTS users;
@@ -111,6 +112,20 @@ CREATE TABLE IF NOT EXISTS adapted_contents (
         FOREIGN KEY (student_id) REFERENCES students(id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS content_attachments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        content_id INT NOT NULL,
+        original_name VARCHAR(255) NOT NULL,
+        saved_name VARCHAR(255) NOT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        mime_type VARCHAR(150) DEFAULT NULL,
+        file_size BIGINT DEFAULT NULL,
+        INDEX idx_content_attachments_content_id (content_id),
+        CONSTRAINT fk_content_attachments_content
+        FOREIGN KEY (content_id) REFERENCES adapted_contents(id)
+        ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS reports (
     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Student, StudentAssignment, AdaptedContent, Report, Visit, User
+from app.models import Student, StudentAssignment, AdaptedContent, ContentAttachment, Report, Visit, User
 
 # Blueprint para agrupar todas las rutas relacionadas a alumnos
 student_bp = Blueprint("student_bp", __name__, url_prefix="/api")
@@ -159,6 +159,33 @@ def save_uploaded_student_photo(file_storage):
     }
 
 
+def save_uploaded_content_file(file_storage):
+    """
+    Guarda un archivo adjunto de contenido adaptado en disco y retorna su metadata.
+    """
+    original_name = secure_filename(file_storage.filename)
+
+    if not original_name:
+        return None
+
+    unique_name = f"{uuid.uuid4().hex}_{original_name}"
+    contents_folder = current_app.config["CONTENTS_UPLOAD_FOLDER"]
+    full_path = os.path.join(contents_folder, unique_name)
+
+    file_storage.save(full_path)
+
+    size = os.path.getsize(full_path)
+    mime_type = file_storage.mimetype
+
+    return {
+        "original_name": original_name,
+        "saved_name": unique_name,
+        "full_path": full_path,
+        "mime_type": mime_type,
+        "size": size
+    }
+
+
 def delete_student_photo_if_exists(student):
     """
     Elimina del filesystem la foto asociada a un alumno si existe.
@@ -176,6 +203,26 @@ def delete_all_student_report_files(student):
 
     for report in student.reports:
         delete_report_file_if_exists(report)
+
+
+def delete_content_attachment_file_if_exists(attachment):
+    """
+    Elimina del filesystem un archivo adjunto de contenido si existe.
+    """
+    if attachment and attachment.file_path and os.path.exists(attachment.file_path):
+        os.remove(attachment.file_path)
+
+
+def delete_all_student_content_attachment_files(student):
+    """
+    Elimina del filesystem todos los adjuntos de contenidos del alumno.
+    """
+    if not student:
+        return
+
+    for content in student.contents:
+        for attachment in content.attachments:
+            delete_content_attachment_file_if_exists(attachment)
 
 
 @student_bp.route("/health", methods=["GET"])
@@ -428,6 +475,7 @@ def delete_student(student_id):
 
     delete_student_photo_if_exists(student)
     delete_all_student_report_files(student)
+    delete_all_student_content_attachment_files(student)
 
     db.session.delete(student)
     db.session.commit()
@@ -584,21 +632,28 @@ def create_student_content(student_id):
     if not can_access_student(user, student_id):
         return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
-    data = request.get_json()
+    is_multipart = request.content_type and "multipart/form-data" in request.content_type
 
-    if not data:
-        return jsonify({"error": "No se enviaron datos"}), 400
+    if is_multipart:
+        materia = str(request.form.get("materia", "")).strip()
+        titulo = str(request.form.get("titulo", "")).strip()
+        descripcion = str(request.form.get("descripcion", "")).strip()
+        progreso_raw = request.form.get("progreso", 0)
+    else:
+        data = request.get_json()
 
-    materia = str(data.get("materia", "")).strip()
-    titulo = str(data.get("titulo", "")).strip()
-    descripcion = str(data.get("descripcion", "")).strip()
+        if not data:
+            return jsonify({"error": "No se enviaron datos"}), 400
+
+        materia = str(data.get("materia", "")).strip()
+        titulo = str(data.get("titulo", "")).strip()
+        descripcion = str(data.get("descripcion", "")).strip()
+        progreso_raw = data.get("progreso", 0)
 
     if not materia or not titulo:
         return jsonify({
             "error": "Los campos materia y titulo son obligatorios"
         }), 400
-
-    progreso_raw = data.get("progreso", 0)
 
     try:
         progreso = int(progreso_raw)
@@ -617,6 +672,31 @@ def create_student_content(student_id):
     )
 
     db.session.add(content)
+    db.session.flush()
+
+    if is_multipart:
+        uploaded_files = request.files.getlist("attachments")
+
+        for uploaded_file in uploaded_files:
+            if not uploaded_file or not uploaded_file.filename:
+                continue
+
+            saved_file = save_uploaded_content_file(uploaded_file)
+
+            if not saved_file:
+                continue
+
+            db.session.add(
+                ContentAttachment(
+                    content_id=content.id,
+                    original_name=saved_file["original_name"],
+                    saved_name=saved_file["saved_name"],
+                    file_path=saved_file["full_path"],
+                    mime_type=saved_file["mime_type"],
+                    file_size=saved_file["size"]
+                )
+            )
+
     db.session.commit()
 
     return jsonify({
@@ -651,19 +731,26 @@ def update_student_content(student_id, content_id):
     if content.student_id != student.id:
         return jsonify({"error": "El contenido no pertenece al alumno indicado"}), 400
 
-    data = request.get_json()
+    is_multipart = request.content_type and "multipart/form-data" in request.content_type
 
-    if not data:
-        return jsonify({"error": "No se enviaron datos"}), 400
+    if is_multipart:
+        materia = str(request.form.get("materia", "")).strip()
+        titulo = str(request.form.get("titulo", "")).strip()
+        descripcion = str(request.form.get("descripcion", "")).strip()
+        progreso_raw = request.form.get("progreso", content.progreso)
+    else:
+        data = request.get_json()
 
-    materia = str(data.get("materia", "")).strip()
-    titulo = str(data.get("titulo", "")).strip()
-    descripcion = str(data.get("descripcion", "")).strip()
+        if not data:
+            return jsonify({"error": "No se enviaron datos"}), 400
+
+        materia = str(data.get("materia", "")).strip()
+        titulo = str(data.get("titulo", "")).strip()
+        descripcion = str(data.get("descripcion", "")).strip()
+        progreso_raw = data.get("progreso", content.progreso)
 
     if not materia or not titulo:
         return jsonify({"error": "Los campos materia y titulo son obligatorios"}), 400
-
-    progreso_raw = data.get("progreso", content.progreso)
 
     try:
         progreso = int(progreso_raw)
@@ -677,6 +764,29 @@ def update_student_content(student_id, content_id):
     content.titulo = titulo
     content.descripcion = descripcion
     content.progreso = progreso
+
+    if is_multipart:
+        uploaded_files = request.files.getlist("attachments")
+
+        for uploaded_file in uploaded_files:
+            if not uploaded_file or not uploaded_file.filename:
+                continue
+
+            saved_file = save_uploaded_content_file(uploaded_file)
+
+            if not saved_file:
+                continue
+
+            db.session.add(
+                ContentAttachment(
+                    content_id=content.id,
+                    original_name=saved_file["original_name"],
+                    saved_name=saved_file["saved_name"],
+                    file_path=saved_file["full_path"],
+                    mime_type=saved_file["mime_type"],
+                    file_size=saved_file["size"]
+                )
+            )
 
     db.session.commit()
 
@@ -712,12 +822,65 @@ def delete_student_content(student_id, content_id):
     if content.student_id != student.id:
         return jsonify({"error": "El contenido no pertenece al alumno indicado"}), 400
 
+    for attachment in content.attachments:
+        delete_content_attachment_file_if_exists(attachment)
+
     db.session.delete(content)
     db.session.commit()
 
     return jsonify({
         "message": "Contenido eliminado correctamente"
     }), 200
+
+
+@student_bp.route(
+    "/students/<int:student_id>/contents/<int:content_id>/attachments/<int:attachment_id>/download",
+    methods=["GET"]
+)
+def download_content_attachment(student_id, content_id, attachment_id):
+    """
+    Descarga un archivo adjunto de contenido adaptado.
+    """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+
+    content = db.session.get(AdaptedContent, content_id)
+
+    if not content:
+        return jsonify({"error": "Contenido no encontrado"}), 404
+
+    if content.student_id != student.id:
+        return jsonify({"error": "El contenido no pertenece al alumno indicado"}), 400
+
+    attachment = db.session.get(ContentAttachment, attachment_id)
+
+    if not attachment:
+        return jsonify({"error": "Adjunto no encontrado"}), 404
+
+    if attachment.content_id != content.id:
+        return jsonify({"error": "El adjunto no pertenece al contenido indicado"}), 400
+
+    if not attachment.saved_name:
+        return jsonify({"error": "El adjunto no está disponible"}), 404
+
+    contents_folder = current_app.config["CONTENTS_UPLOAD_FOLDER"]
+
+    return send_from_directory(
+        contents_folder,
+        attachment.saved_name,
+        as_attachment=True,
+        download_name=attachment.original_name
+    )
 
 
 @student_bp.route("/students/<int:student_id>/reports", methods=["GET"])

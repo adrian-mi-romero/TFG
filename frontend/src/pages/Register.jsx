@@ -8,10 +8,9 @@ import { apiRequest } from "../services/api";
  */
 const roleOptions = [
   { value: "padre_tutor", label: "Padre / Tutor" },
-  { value: "maestro_grado", label: "Maestro de grado" },
-  { value: "maestro_integrador", label: "Maestro integrador" },
-  { value: "profesional_terapeutico", label: "Profesional terapéutico" },
-  { value: "admin", label: "Administrador" }
+  { value: "maestro_grado", label: "Docente" },
+  { value: "maestro_integrador", label: "Maestro/a integrador/a" },
+  { value: "profesional_terapeutico", label: "Profesional terapéutico" }
 ];
 
 /**

@@ -21,6 +21,7 @@ class Config:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
     REPORTS_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, "reports")
     STUDENTS_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, "students")
+    CONTENTS_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, "contents")
 
     # 16 MB máximo por request
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024

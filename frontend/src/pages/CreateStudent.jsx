@@ -16,7 +16,6 @@ export default function CreateStudent() {
 
   // Estado del formulario
   const [form, setForm] = useState({
-    legajo: "",
     nombre: "",
     apellido: "",
     escuela: "",
@@ -89,17 +88,6 @@ export default function CreateStudent() {
       <section className="card form-card">
         <form onSubmit={handleSubmit} className="student-form">
           <div className="form-grid">
-            <div>
-              <label>Legajo</label>
-              <input
-                type="text"
-                name="legajo"
-                value={form.legajo}
-                onChange={handleChange}
-                placeholder="Ej: ALU-003"
-              />
-            </div>
-
             <div>
               <label>Nombre</label>
               <input

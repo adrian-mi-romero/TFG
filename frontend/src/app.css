@@ -143,6 +143,16 @@ button:hover {
   background: #dbeafe;
 }
 
+.topbar-link-button {
+  margin-top: 0;
+  background: #eef2ff;
+  color: #1e3a8a;
+}
+
+.topbar-link-button:hover {
+  background: #dbeafe;
+}
+
 .search-form {
   display: flex;
   gap: 12px;

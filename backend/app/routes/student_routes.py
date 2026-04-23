@@ -1,6 +1,12 @@
 import os
 import uuid
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from datetime import datetime
+from io import BytesIO
+from flask import Blueprint, jsonify, request, current_app, send_from_directory, send_file
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
@@ -225,6 +231,36 @@ def delete_all_student_content_attachment_files(student):
             delete_content_attachment_file_if_exists(attachment)
 
 
+def draw_pdf_text_block(pdf_canvas, text, x, y, max_width, font_name="Helvetica", font_size=10, line_height=14):
+    """
+    Dibuja un bloque de texto con salto automático de línea y devuelve la nueva coordenada Y.
+    """
+    words = text.split()
+
+    if not words:
+        return y - line_height
+
+    current_line = ""
+
+    for word in words:
+        test_line = f"{current_line} {word}".strip()
+        line_width = stringWidth(test_line, font_name, font_size)
+
+        if line_width <= max_width:
+            current_line = test_line
+            continue
+
+        pdf_canvas.drawString(x, y, current_line)
+        y -= line_height
+        current_line = word
+
+    if current_line:
+        pdf_canvas.drawString(x, y, current_line)
+        y -= line_height
+
+    return y
+
+
 @student_bp.route("/health", methods=["GET"])
 def health():
     """
@@ -287,8 +323,8 @@ def create_student():
     Valida:
     - usuario autenticado
     - permiso de creación
-    - campos obligatorios: legajo, nombre, apellido, escuela
-    - Legajo único
+    - campos obligatorios: nombre, apellido, escuela
+    - Legajo auto-generado en formato ALU-NNN
 
     Regla especial:
     - si el creador es maestro_integrador, se autoasigna al alumno creado
@@ -306,7 +342,7 @@ def create_student():
     if not data:
         return jsonify({"error": "No se enviaron datos"}), 400
 
-    required_fields = ["legajo", "nombre", "apellido", "escuela"]
+    required_fields = ["nombre", "apellido", "escuela"]
 
     missing_fields = [
         field for field in required_fields
@@ -319,15 +355,21 @@ def create_student():
             "missing_fields": missing_fields
         }), 400
 
-    existing_student = Student.query.filter_by(
-        legajo=data["legajo"].strip()
-    ).first()
-
-    if existing_student:
-        return jsonify({"error": "Ya existe un alumno con ese legajo"}), 409
+    # Auto-generar legajo en formato ALU-NNN
+    all_legajos = [s.legajo for s in Student.query.with_entities(Student.legajo).all()]
+    max_num = 0
+    for leg in all_legajos:
+        if leg and leg.startswith("ALU-"):
+            try:
+                num = int(leg[4:])
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+    legajo_generado = f"ALU-{max_num + 1:03d}"
 
     student = Student(
-        legajo=data["legajo"].strip(),
+        legajo=legajo_generado,
         nombre=data["nombre"].strip(),
         apellido=data["apellido"].strip(),
         escuela=data["escuela"].strip(),
@@ -376,6 +418,197 @@ def get_student(student_id):
         return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
     return jsonify(student.to_dict()), 200
+
+
+@student_bp.route("/students/<int:student_id>/progress-report", methods=["GET"])
+def generate_student_progress_report(student_id):
+    """
+    Genera un PDF con el reporte general de progreso del alumno.
+    """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    student = db.session.get(Student, student_id)
+
+    if not student:
+        return jsonify({"error": "Alumno no encontrado"}), 404
+
+    if not can_access_student(user, student_id):
+        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+
+    contents = student.contents
+    visits = student.visits
+
+    completed_contents = [content for content in contents if int(content.progreso or 0) >= 100]
+    in_progress_contents = [content for content in contents if int(content.progreso or 0) < 100]
+    issue_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    page_width, page_height = A4
+
+    left_margin = 50
+    right_margin = 50
+    top_y = page_height - 50
+    line_y = top_y
+    usable_width = page_width - left_margin - right_margin
+
+    def ensure_space(required_height=30):
+        nonlocal line_y
+        if line_y <= 60 + required_height:
+            pdf.showPage()
+            line_y = top_y
+
+    def draw_section_title(title):
+        nonlocal line_y
+        ensure_space(34)
+        pdf.setFillColor(colors.HexColor("#eff6ff"))
+        pdf.roundRect(left_margin, line_y - 16, usable_width, 22, 6, stroke=0, fill=1)
+        pdf.setFillColor(colors.HexColor("#1e3a8a"))
+        pdf.setFont("Helvetica-Bold", 13)
+        pdf.drawString(left_margin + 10, line_y - 2, title)
+        pdf.setFillColor(colors.black)
+        line_y -= 28
+
+    pdf.setTitle(f"Reporte_{student.legajo}.pdf")
+
+    pdf.setStrokeColor(colors.HexColor("#d0d7de"))
+    pdf.roundRect(left_margin, line_y - 110, usable_width, 120, 10, stroke=1, fill=0)
+
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawString(left_margin, line_y, "Reporte general de progreso")
+    line_y -= 26
+
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(left_margin, line_y, f"Fecha de emisión: {issue_date}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Alumno: {student.nombre} {student.apellido}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Legajo: {student.legajo}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Escuela: {student.escuela}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Grado: {student.grado or 'Sin dato'}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Diagnóstico: {student.diagnostico or 'Sin dato'}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Maestro/a integrador/a: {student.maestro_integrador or 'Sin dato'}")
+    line_y -= 16
+    pdf.drawString(left_margin, line_y, f"Docente: {student.maestro_grado or 'Sin dato'}")
+    line_y -= 28
+
+    draw_section_title("Resumen general")
+
+    pdf.setFillColor(colors.HexColor("#f8fafc"))
+    pdf.roundRect(left_margin, line_y - 58, usable_width, 68, 8, stroke=1, fill=1)
+    pdf.setFillColor(colors.black)
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(left_margin + 12, line_y, f"Cantidad total de contenidos: {len(contents)}")
+    line_y -= 16
+    pdf.drawString(left_margin + 12, line_y, f"Contenidos en proceso: {len(in_progress_contents)}")
+    line_y -= 16
+    pdf.drawString(left_margin + 12, line_y, f"Contenidos completos: {len(completed_contents)}")
+    line_y -= 16
+    pdf.drawString(left_margin + 12, line_y, f"Cantidad total de visitas: {len(visits)}")
+    line_y -= 28
+
+    draw_section_title("Detalle de contenidos")
+
+    if not contents:
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(left_margin, line_y, "No hay contenidos adaptados registrados.")
+        line_y -= 18
+    else:
+        for index, content in enumerate(contents, start=1):
+            ensure_space(88)
+            progress_value = int(content.progreso or 0)
+            status = "Objetivo completo" if progress_value >= 100 else "Objetivo en proceso"
+
+            pdf.setFillColor(colors.white)
+            pdf.roundRect(left_margin, line_y - 52, usable_width, 62, 8, stroke=1, fill=1)
+            pdf.setFillColor(colors.black)
+
+            pdf.setFont("Helvetica-Bold", 11)
+            pdf.drawString(left_margin + 10, line_y, f"{index}. {content.titulo} ({content.materia})")
+            line_y -= 16
+
+            pdf.setFont("Helvetica", 10)
+            pdf.drawString(left_margin + 10, line_y, f"Progreso: {progress_value}% · Estado: {status}")
+            line_y -= 14
+
+            description = content.descripcion or "Sin descripción"
+            line_y = draw_pdf_text_block(
+                pdf,
+                f"Descripción: {description}",
+                left_margin + 10,
+                line_y,
+                usable_width - 20,
+                font_size=10,
+                line_height=13
+            )
+            line_y -= 10
+
+    draw_section_title("Detalle de visitas")
+
+    if not visits:
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(left_margin, line_y, "No hay visitas registradas.")
+        line_y -= 18
+    else:
+        for index, visit in enumerate(visits, start=1):
+            ensure_space(72)
+
+            pdf.setFillColor(colors.white)
+            pdf.roundRect(left_margin, line_y - 38, usable_width, 48, 8, stroke=1, fill=1)
+            pdf.setFillColor(colors.black)
+
+            pdf.setFont("Helvetica-Bold", 11)
+            pdf.drawString(left_margin + 10, line_y, f"{index}. {visit.fecha} · {visit.profesional}")
+            line_y -= 16
+
+            pdf.setFont("Helvetica", 10)
+            observations = visit.observaciones or "Sin observaciones"
+            line_y = draw_pdf_text_block(
+                pdf,
+                f"Observaciones: {observations}",
+                left_margin + 10,
+                line_y,
+                usable_width - 20,
+                font_size=10,
+                line_height=13
+            )
+            line_y -= 10
+
+    ensure_space(90)
+    draw_section_title("Firmas")
+
+    signature_y = line_y - 20
+    left_signature_x = left_margin + 20
+    right_signature_x = left_margin + usable_width / 2 + 20
+    signature_width = usable_width / 2 - 40
+
+    pdf.line(left_signature_x, signature_y, left_signature_x + signature_width, signature_y)
+    pdf.line(right_signature_x, signature_y, right_signature_x + signature_width, signature_y)
+
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left_signature_x, signature_y - 14, "Firma del/de la maestro/a integrador/a")
+    pdf.drawString(right_signature_x, signature_y - 14, "Firma del/de la docente")
+
+    pdf.setFont("Helvetica", 9)
+    pdf.drawString(left_signature_x, signature_y - 28, f"Nombre: {student.maestro_integrador or '................................'}")
+    pdf.drawString(right_signature_x, signature_y - 28, f"Nombre: {student.maestro_grado or '................................'}")
+
+    pdf.save()
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"reporte_progreso_{student.legajo}.pdf"
+    )
 
 
 @student_bp.route("/students/<int:student_id>", methods=["PUT"])

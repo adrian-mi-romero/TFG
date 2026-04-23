@@ -1132,6 +1132,48 @@ export default function StudentDetail() {
   }
 
   /**
+   * Descarga el reporte PDF general del alumno.
+   */
+  async function handleDownloadProgressReport() {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+
+    setStudentError("");
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/students/${id}/progress-report`, {
+        headers: {
+          ...(user?.id ? { "X-USER-ID": String(user.id) } : {})
+        }
+      });
+
+      let data = null;
+
+      if (!response.ok) {
+        try {
+          data = await response.json();
+        } catch (error) {
+          data = null;
+        }
+
+        throw new Error(data?.error || "Error al generar el reporte PDF");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = `reporte_progreso_${student.legajo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setStudentError(err.message);
+    }
+  }
+
+  /**
    * Estado de carga
    */
   if (!student) {
@@ -1153,6 +1195,13 @@ export default function StudentDetail() {
         </div>
 
         <div className="topbar-actions">
+          <button
+            type="button"
+            className="topbar-link-button"
+            onClick={handleDownloadProgressReport}
+          >
+            Generación de reporte
+          </button>
           <Link to="/dashboard" className="topbar-link">
             Dashboard
           </Link>

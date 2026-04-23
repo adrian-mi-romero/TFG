@@ -53,7 +53,7 @@ export default function Login() {
       localStorage.setItem("user", JSON.stringify(data.user));
 
       // Redirección al listado de alumnos
-      navigate("/students");
+      navigate("/dashboard");
 
     } catch (err) {
       setError(err.message);

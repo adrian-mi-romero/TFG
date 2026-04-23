@@ -111,6 +111,7 @@ export default function Register() {
             onChange={handleChange}
           />
 
+          <p className="form-field-label">Tipo de perfil de usuario</p>
           <select
             name="role"
             value={form.role}

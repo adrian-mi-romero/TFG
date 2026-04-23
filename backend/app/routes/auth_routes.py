@@ -39,6 +39,7 @@ def register():
 
     full_name = data.get("full_name", "").strip()
     email = data.get("email", "").strip().lower()
+    phone = data.get("phone", "").strip()
     password = data.get("password", "").strip()
     role = data.get("role", "").strip()
 
@@ -63,6 +64,7 @@ def register():
     user = User(
         full_name=full_name,
         email=email,
+        phone=phone if phone else None,
         password_hash=hash_password(password),
         role=role
     )
@@ -106,5 +108,100 @@ def login():
 
     return jsonify({
         "message": "Login correcto",
+        "user": user.to_dict()
+    }), 200
+
+
+@auth_bp.route("/profile", methods=["GET"])
+def get_profile():
+    """
+    Endpoint para obtener el perfil del usuario autenticado.
+    
+    Requiere header X-USER-ID con el ID del usuario.
+    
+    Retorna:
+    - 200 con datos del usuario
+    - 401 si no está autenticado
+    - 404 si el usuario no existe
+    """
+    user_id = request.headers.get("X-USER-ID")
+    
+    if not user_id:
+        return jsonify({"error": "No autorizado"}), 401
+    
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "ID de usuario inválido"}), 400
+    
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({"error": "Usuario no encontrado"}), 404
+    
+    return jsonify({
+        "user": user.to_dict()
+    }), 200
+
+
+@auth_bp.route("/profile", methods=["PUT"])
+def update_profile():
+    """
+    Endpoint para actualizar el perfil del usuario autenticado.
+    
+    Requiere header X-USER-ID con el ID del usuario.
+    Puede actualizar: email, phone, full_name
+    
+    Retorna:
+    - 200 con datos actualizados del usuario
+    - 400 si faltan datos
+    - 401 si no está autenticado
+    - 404 si el usuario no existe
+    - 409 si el email ya está en uso
+    """
+    user_id = request.headers.get("X-USER-ID")
+    
+    if not user_id:
+        return jsonify({"error": "No autorizado"}), 401
+    
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "ID de usuario inválido"}), 400
+    
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({"error": "Usuario no encontrado"}), 404
+    
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "No se enviaron datos"}), 400
+    
+    # Actualizar email si se proporciona
+    if "email" in data:
+        new_email = data.get("email", "").strip().lower()
+        if new_email:
+            # Verificar que no exista otro usuario con este email
+            existing_user = User.query.filter_by(email=new_email).first()
+            if existing_user and existing_user.id != user_id:
+                return jsonify({"error": "Ya existe un usuario con ese email"}), 409
+            user.email = new_email
+    
+    # Actualizar teléfono si se proporciona
+    if "phone" in data:
+        user.phone = data.get("phone", "").strip() or None
+    
+    # Actualizar nombre si se proporciona
+    if "full_name" in data:
+        full_name = data.get("full_name", "").strip()
+        if full_name:
+            user.full_name = full_name
+    
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Perfil actualizado correctamente",
         "user": user.to_dict()
     }), 200

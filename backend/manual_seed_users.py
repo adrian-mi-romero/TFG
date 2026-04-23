@@ -21,28 +21,28 @@ def run_manual_users_seed():
 
     users_to_seed = [
         # Maestros integradores
-        {"full_name": "Lucia Perez", "email": "integrador1@eintegracion.com", "role": "maestro_integrador"},
-        {"full_name": "Sofia Martinez", "email": "integrador2@eintegracion.com", "role": "maestro_integrador"},
+        {"full_name": "Lucia Perez", "email": "integrador1@eintegracion.com", "phone": "+34 913 456 789", "role": "maestro_integrador"},
+        {"full_name": "Sofia Martinez", "email": "integrador2@eintegracion.com", "phone": "+34 914 567 890", "role": "maestro_integrador"},
 
         # Docentes (maestro_grado)
-        {"full_name": "Carlos Diaz", "email": "docente1@eintegracion.com", "role": "maestro_grado"},
-        {"full_name": "Mariana Lopez", "email": "docente2@eintegracion.com", "role": "maestro_grado"},
-        {"full_name": "Florencia Rivas", "email": "docente3@eintegracion.com", "role": "maestro_grado"},
-        {"full_name": "Daniela Ferreyra", "email": "docente4@eintegracion.com", "role": "maestro_grado"},
+        {"full_name": "Carlos Diaz", "email": "docente1@eintegracion.com", "phone": "+34 915 678 901", "role": "maestro_grado"},
+        {"full_name": "Mariana Lopez", "email": "docente2@eintegracion.com", "phone": "+34 916 789 012", "role": "maestro_grado"},
+        {"full_name": "Florencia Rivas", "email": "docente3@eintegracion.com", "phone": "+34 917 890 123", "role": "maestro_grado"},
+        {"full_name": "Daniela Ferreyra", "email": "docente4@eintegracion.com", "phone": "+34 918 901 234", "role": "maestro_grado"},
 
         # Padres / tutores
-        {"full_name": "Laura Gomez", "email": "padre1@eintegracion.com", "role": "padre_tutor"},
-        {"full_name": "Jorge Fernandez", "email": "padre2@eintegracion.com", "role": "padre_tutor"},
-        {"full_name": "Silvia Ruiz", "email": "padre3@eintegracion.com", "role": "padre_tutor"},
-        {"full_name": "Hector Sosa", "email": "padre4@eintegracion.com", "role": "padre_tutor"},
-        {"full_name": "Paula Ledesma", "email": "padre5@eintegracion.com", "role": "padre_tutor"},
-        {"full_name": "Natalia Quiroga", "email": "padre6@eintegracion.com", "role": "padre_tutor"},
+        {"full_name": "Laura Gomez", "email": "padre1@eintegracion.com", "phone": "+34 919 012 345", "role": "padre_tutor"},
+        {"full_name": "Jorge Fernandez", "email": "padre2@eintegracion.com", "phone": "+34 920 123 456", "role": "padre_tutor"},
+        {"full_name": "Silvia Ruiz", "email": "padre3@eintegracion.com", "phone": "+34 921 234 567", "role": "padre_tutor"},
+        {"full_name": "Hector Sosa", "email": "padre4@eintegracion.com", "phone": "+34 922 345 678", "role": "padre_tutor"},
+        {"full_name": "Paula Ledesma", "email": "padre5@eintegracion.com", "phone": "+34 923 456 789", "role": "padre_tutor"},
+        {"full_name": "Natalia Quiroga", "email": "padre6@eintegracion.com", "phone": "+34 924 567 890", "role": "padre_tutor"},
 
         # Profesionales terapéuticos
-        {"full_name": "Lic. Ana Torres", "email": "profesional1@eintegracion.com", "role": "profesional_terapeutico"},
-        {"full_name": "Lic. Paula Rios", "email": "profesional2@eintegracion.com", "role": "profesional_terapeutico"},
-        {"full_name": "Lic. Marina Salas", "email": "profesional3@eintegracion.com", "role": "profesional_terapeutico"},
-        {"full_name": "Lic. Damian Ibarra", "email": "profesional4@eintegracion.com", "role": "profesional_terapeutico"},
+        {"full_name": "Lic. Ana Torres", "email": "profesional1@eintegracion.com", "phone": "+34 925 678 901", "role": "profesional_terapeutico"},
+        {"full_name": "Lic. Paula Rios", "email": "profesional2@eintegracion.com", "phone": "+34 926 789 012", "role": "profesional_terapeutico"},
+        {"full_name": "Lic. Marina Salas", "email": "profesional3@eintegracion.com", "phone": "+34 927 890 123", "role": "profesional_terapeutico"},
+        {"full_name": "Lic. Damian Ibarra", "email": "profesional4@eintegracion.com", "phone": "+34 928 901 234", "role": "profesional_terapeutico"},
     ]
 
     created = 0
@@ -58,6 +58,7 @@ def run_manual_users_seed():
         user = User(
             full_name=item["full_name"],
             email=item["email"].lower(),
+            phone=item.get("phone"),
             password_hash=hash_password(default_password),
             role=item["role"]
         )

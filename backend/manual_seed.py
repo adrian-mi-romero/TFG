@@ -22,6 +22,7 @@ def run_manual_seed():
     admin = User(
         full_name="Adrian Romero",
         email="admin@eintegracion.com",
+        phone="+34 912 345 678",
         password_hash=hash_password("Admin123!"),
         role="admin"
     )
@@ -29,6 +30,7 @@ def run_manual_seed():
     integrador_1 = User(
         full_name="Lucia Perez",
         email="integrador1@eintegracion.com",
+        phone="+34 913 456 789",
         password_hash=hash_password("Admin123!"),
         role="maestro_integrador"
     )
@@ -36,6 +38,7 @@ def run_manual_seed():
     integrador_2 = User(
         full_name="Sofia Martinez",
         email="integrador2@eintegracion.com",
+        phone="+34 914 567 890",
         password_hash=hash_password("Admin123!"),
         role="maestro_integrador"
     )
@@ -43,6 +46,7 @@ def run_manual_seed():
     docente = User(
         full_name="Carlos Diaz",
         email="docente@eintegracion.com",
+        phone="+34 915 678 901",
         password_hash=hash_password("Admin123!"),
         role="maestro_grado"
     )

@@ -213,11 +213,30 @@ class Visit(db.Model):
     profesional = db.Column(db.String(120), nullable=False)
     observaciones = db.Column(db.Text, nullable=True)
 
+    def _compute_calendar_status(self):
+        try:
+            visit_date = datetime.strptime(self.fecha, "%Y-%m-%d").date()
+            today = datetime.now().date()
+
+            if visit_date < today:
+                return "efectuada", "Efectuada"
+
+            if visit_date > today:
+                return "programada", "Programada"
+
+            return "hoy", "Hoy"
+        except ValueError:
+            return "sin_fecha", "Sin fecha válida"
+
     def to_dict(self):
+        estado_calendario, estado_calendario_label = self._compute_calendar_status()
+
         return {
             "id": self.id,
             "student_id": self.student_id,
             "fecha": self.fecha,
             "profesional": self.profesional,
-            "observaciones": self.observaciones
+            "observaciones": self.observaciones,
+            "estado_calendario": estado_calendario,
+            "estado_calendario_label": estado_calendario_label
         }

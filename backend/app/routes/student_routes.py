@@ -15,6 +15,12 @@ from app.models import Student, StudentAssignment, AdaptedContent, ContentAttach
 # Blueprint para agrupar todas las rutas relacionadas a alumnos
 student_bp = Blueprint("student_bp", __name__, url_prefix="/api")
 
+ASSIGNABLE_ROLES = {
+    "padre_tutor",
+    "profesional_terapeutico",
+    "maestro_grado"
+}
+
 
 def get_current_user():
     """
@@ -96,11 +102,43 @@ def can_edit_student(user, student_id):
     return False
 
 
-def can_delete_student(user):
+def can_delete_student(user, student_id):
     """
     Define quién puede borrar alumnos.
     """
-    return is_admin(user)
+    if not user:
+        return False
+
+    return user.role == "maestro_integrador" and can_access_student(user, student_id)
+
+
+def get_student_assignments_by_role(student_id):
+    """
+    Devuelve asignaciones del alumno agrupadas por rol (solo roles vinculables).
+    """
+    grouped = {
+        "padre_tutor": [],
+        "profesional_terapeutico": [],
+        "maestro_grado": []
+    }
+
+    rows = db.session.query(StudentAssignment, User).join(
+        User,
+        StudentAssignment.user_id == User.id
+    ).filter(
+        StudentAssignment.student_id == student_id,
+        StudentAssignment.assignment_type.in_(ASSIGNABLE_ROLES)
+    ).all()
+
+    for assignment, assigned_user in rows:
+        grouped[assignment.assignment_type].append({
+            "id": assigned_user.id,
+            "full_name": assigned_user.full_name,
+            "email": assigned_user.email,
+            "role": assigned_user.role
+        })
+
+    return grouped
 
 
 def save_uploaded_report_file(file_storage):
@@ -315,6 +353,39 @@ def get_students():
     return jsonify([student.to_dict() for student in students]), 200
 
 
+@student_bp.route("/students/assignment-users", methods=["GET"])
+def get_assignment_users():
+    """
+    Devuelve usuarios disponibles para asignación por rol en legajo.
+    Solo admin o maestro_integrador pueden consultar.
+    """
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "Usuario no autenticado"}), 401
+
+    if user.role not in ["admin", "maestro_integrador"]:
+        return jsonify({"error": "No tienes permisos para ver usuarios asignables"}), 403
+
+    users = User.query.filter(User.role.in_(ASSIGNABLE_ROLES)).order_by(User.full_name.asc()).all()
+
+    grouped = {
+        "padre_tutor": [],
+        "profesional_terapeutico": [],
+        "maestro_grado": []
+    }
+
+    for candidate in users:
+        grouped[candidate.role].append({
+            "id": candidate.id,
+            "full_name": candidate.full_name,
+            "email": candidate.email,
+            "role": candidate.role
+        })
+
+    return jsonify(grouped), 200
+
+
 @student_bp.route("/students", methods=["POST"])
 def create_student():
     """
@@ -417,7 +488,16 @@ def get_student(student_id):
     if not can_access_student(user, student_id):
         return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
-    return jsonify(student.to_dict()), 200
+    student_data = student.to_dict()
+    assigned_users_by_role = get_student_assignments_by_role(student_id)
+
+    student_data["assigned_users_by_role"] = assigned_users_by_role
+    student_data["assigned_user_ids_by_role"] = {
+        role: [item["id"] for item in users]
+        for role, users in assigned_users_by_role.items()
+    }
+
+    return jsonify(student_data), 200
 
 
 @student_bp.route("/students/<int:student_id>/progress-report", methods=["GET"])
@@ -651,6 +731,49 @@ def update_student(student_id):
     maestro_grado = str(data.get("maestro_grado", "")).strip()
     direccion = str(data.get("direccion", "")).strip()
 
+    raw_assigned_padres = data.get("assigned_padre_tutor_user_ids", [])
+    raw_assigned_profesionales = data.get("assigned_profesional_terapeutico_user_ids", [])
+    raw_assigned_docentes = data.get("assigned_maestro_grado_user_ids", [])
+
+    if not isinstance(raw_assigned_padres, list) or not isinstance(raw_assigned_profesionales, list) or not isinstance(raw_assigned_docentes, list):
+        return jsonify({"error": "Las asignaciones deben enviarse como listas de IDs"}), 400
+
+    try:
+        assigned_padres = [int(user_id) for user_id in raw_assigned_padres]
+        assigned_profesionales = [int(user_id) for user_id in raw_assigned_profesionales]
+        assigned_docentes = [int(user_id) for user_id in raw_assigned_docentes]
+    except (TypeError, ValueError):
+        return jsonify({"error": "Los IDs de asignación son inválidos"}), 400
+
+    assigned_padres = list(dict.fromkeys(assigned_padres))
+    assigned_profesionales = list(dict.fromkeys(assigned_profesionales))
+    assigned_docentes = list(dict.fromkeys(assigned_docentes))
+
+    if len(assigned_padres) > 3 or len(assigned_profesionales) > 3 or len(assigned_docentes) > 3:
+        return jsonify({"error": "Puedes asignar hasta 3 usuarios por perfil"}), 400
+
+    assignment_payload = {
+        "padre_tutor": assigned_padres,
+        "profesional_terapeutico": assigned_profesionales,
+        "maestro_grado": assigned_docentes
+    }
+
+    validated_users_by_role = {}
+    for role_name, user_ids in assignment_payload.items():
+        if not user_ids:
+            validated_users_by_role[role_name] = []
+            continue
+
+        role_users = User.query.filter(
+            User.id.in_(user_ids),
+            User.role == role_name
+        ).all()
+
+        if len(role_users) != len(user_ids):
+            return jsonify({"error": f"Hay usuarios inválidos para el perfil {role_name}"}), 400
+
+        validated_users_by_role[role_name] = role_users
+
     if not nombre or not apellido or not escuela:
         return jsonify({
             "error": "Los campos nombre, apellido y escuela son obligatorios"
@@ -673,6 +796,25 @@ def update_student(student_id):
     student.maestro_integrador = maestro_integrador
     student.maestro_grado = maestro_grado
     student.direccion = direccion
+
+    for role_name in ASSIGNABLE_ROLES:
+        StudentAssignment.query.filter_by(
+            student_id=student.id,
+            assignment_type=role_name
+        ).delete(synchronize_session=False)
+
+    for role_name, users_for_role in validated_users_by_role.items():
+        for assigned_user in users_for_role:
+            db.session.add(
+                StudentAssignment(
+                    student_id=student.id,
+                    user_id=assigned_user.id,
+                    assignment_type=role_name
+                )
+            )
+
+    if validated_users_by_role["maestro_grado"]:
+        student.maestro_grado = ", ".join([item.full_name for item in validated_users_by_role["maestro_grado"]])
 
     db.session.commit()
 
@@ -698,7 +840,7 @@ def delete_student(student_id):
     if not user:
         return jsonify({"error": "Usuario no autenticado"}), 401
 
-    if not can_delete_student(user):
+    if not can_delete_student(user, student_id):
         return jsonify({"error": "No tienes permisos para borrar alumnos"}), 403
 
     student = db.session.get(Student, student_id)
@@ -862,8 +1004,8 @@ def create_student_content(student_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     is_multipart = request.content_type and "multipart/form-data" in request.content_type
 
@@ -953,8 +1095,8 @@ def update_student_content(student_id, content_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     content = db.session.get(AdaptedContent, content_id)
 
@@ -1044,8 +1186,8 @@ def delete_student_content(student_id, content_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     content = db.session.get(AdaptedContent, content_id)
 
@@ -1134,8 +1276,8 @@ def delete_content_attachment(student_id, content_id, attachment_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     content = db.session.get(AdaptedContent, content_id)
 
@@ -1200,8 +1342,8 @@ def create_student_report(student_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     autor = str(request.form.get("autor", "")).strip()
     tipo = str(request.form.get("tipo", "")).strip()
@@ -1258,8 +1400,8 @@ def update_student_report(student_id, report_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     report = db.session.get(Report, report_id)
 
@@ -1330,8 +1472,8 @@ def delete_student_report(student_id, report_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     report = db.session.get(Report, report_id)
 
@@ -1408,7 +1550,8 @@ def get_student_visits(student_id):
     if not can_access_student(user, student_id):
         return jsonify({"error": "No tienes acceso a este alumno"}), 403
 
-    return jsonify([item.to_dict() for item in student.visits]), 200
+    visits = Visit.query.filter_by(student_id=student_id).order_by(Visit.fecha.asc()).all()
+    return jsonify([item.to_dict() for item in visits]), 200
 
 
 @student_bp.route("/students/<int:student_id>/visits", methods=["POST"])
@@ -1426,8 +1569,8 @@ def create_student_visit(student_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     data = request.get_json()
 
@@ -1474,8 +1617,8 @@ def update_student_visit(student_id, visit_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     visit = db.session.get(Visit, visit_id)
 
@@ -1526,8 +1669,8 @@ def delete_student_visit(student_id, visit_id):
     if not student:
         return jsonify({"error": "Alumno no encontrado"}), 404
 
-    if not can_access_student(user, student_id):
-        return jsonify({"error": "No tienes acceso a este alumno"}), 403
+    if not can_edit_student(user, student_id):
+        return jsonify({"error": "No tienes permisos para editar este alumno"}), 403
 
     visit = db.session.get(Visit, visit_id)
 
